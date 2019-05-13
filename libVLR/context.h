@@ -12,7 +12,7 @@
 #endif
 
 namespace VLR {
-    std::string readTxtFile(const std::string& filepath);
+    std::string readTxtFile(const filesystem::path& filepath);
 
 
 

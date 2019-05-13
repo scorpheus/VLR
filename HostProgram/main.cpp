@@ -11,9 +11,6 @@
 #define STBI_MSC_SECURE_CRT
 #include "stb_image_write.h"
 
-// only for catching an exception.
-#include <optix_world.h>
-
 #include "scene.h"
 
 #include "StopWatch.h"
@@ -104,7 +101,30 @@ float g_environmentRotation;
 
 
 
-static std::string readTxtFile(const std::string& filepath) {
+namespace filesystem = std::experimental::filesystem;
+static filesystem::path getExecutableDirectory() {
+    static filesystem::path ret;
+
+    static bool done = false;
+    if (!done) {
+#if defined(HP_Platform_Windows_MSVC)
+        TCHAR filepath[1024];
+        auto length = GetModuleFileName(NULL, filepath, 1024);
+        VLRAssert(length > 0, "Failed to query the executable path.");
+
+        ret = filepath;
+#else
+        static_assert(false, "Not implemented");
+#endif
+        ret = ret.remove_filename();
+
+        done = true;
+    }
+
+    return ret;
+}
+
+static std::string readTxtFile(const filesystem::path& filepath) {
     std::ifstream ifs;
     ifs.open(filepath, std::ios::in);
     if (ifs.fail())
@@ -441,10 +461,12 @@ static int32_t mainFunc(int32_t argc, const char* argv[]) {
         GLTK::BufferTexture outputTexture;
         outputTexture.initialize(outputBufferGL, GLTK::SizedInternalFormat::RGB32F);
 
+        const filesystem::path exeDir = getExecutableDirectory();
+
         // JP: OptiXの出力を書き出すシェーダー。
         GLTK::GraphicsShader drawOptiXResultShader;
-        drawOptiXResultShader.initializeVSPS(readTxtFile("resources/shaders/drawOptiXResult.vert"),
-                                             readTxtFile("resources/shaders/drawOptiXResult.frag"));
+        drawOptiXResultShader.initializeVSPS(readTxtFile(exeDir / "shaders/drawOptiXResult.vert"),
+                                             readTxtFile(exeDir / "shaders/drawOptiXResult.frag"));
 
         // JP: HiDPIディスプレイで過剰なレンダリング負荷になってしまうため低解像度フレームバッファーを作成する。
         GLTK::FrameBuffer frameBuffer;
@@ -452,8 +474,8 @@ static int32_t mainFunc(int32_t argc, const char* argv[]) {
 
         // JP: アップスケール用のシェーダー。
         GLTK::GraphicsShader scaleShader;
-        scaleShader.initializeVSPS(readTxtFile("resources/shaders/scale.vert"),
-                                   readTxtFile("resources/shaders/scale.frag"));
+        scaleShader.initializeVSPS(readTxtFile(exeDir / "shaders/scale.vert"),
+                                   readTxtFile(exeDir / "shaders/scale.frag"));
 
         // JP: アップスケール用のサンプラー。
         //     texelFetch()を使う場合には設定値は無関係。だがバインドは必要な様子。
@@ -1126,8 +1148,8 @@ int32_t main(int32_t argc, const char* argv[]) {
     try {
         mainFunc(argc, argv);
     }
-    catch (optix::Exception ex) {
-        hpprintf("OptiX Error: %u: %s\n", ex.getErrorCode(), ex.getErrorString().c_str());
+    catch (const std::exception &ex) {
+        hpprintf("Error: %s\n", ex.what());
     }
 
     return 0;

@@ -280,7 +280,7 @@ static VLRCpp::Image2DRef loadImage2D(const VLRCpp::ContextRef &context, const s
     }
 
     std::string ext = filepath.substr(filepath.find_last_of('.') + 1);
-    std::transform(ext.begin(), ext.end(), ext.begin(), std::tolower);
+    std::transform(ext.begin(), ext.end(), ext.begin(), [](unsigned char c) { return std::tolower(c); });
 
 //#define OVERRIDE_BY_DDS
 
@@ -467,7 +467,7 @@ SurfaceMaterialAttributeTuple createMaterialDefaultFunction(const VLRCpp::Contex
 
     if (imgAlpha) {
         if (imgAlpha->getOriginalDataFormat() == VLRDataFormat_Gray8)
-            socketAlpha = texAlpha->getSocket(VLRShaderNodeSocketType_float, 0);
+            socketAlpha = texAlpha->getSocket(VLRShaderNodeSocketType_float1, 0);
         else
             socketAlpha = texAlpha->getSocket(VLRShaderNodeSocketType_Alpha, 0);
     }
@@ -603,7 +603,7 @@ void createCornellBoxScene(const VLRCpp::ContextRef &context, Shot* shot) {
     using namespace VLRCpp;
     using namespace VLR;
 
-    shot->scene = context->createScene(context->createStaticTransform(translate(0.0f, 0.0f, 0.0f)));
+    shot->scene = context->createScene();
 
     auto cornellBox = context->createTriangleMeshSurfaceNode("CornellBox");
     {
@@ -802,7 +802,7 @@ void createMaterialTestScene(const VLRCpp::ContextRef &context, Shot* shot) {
     using namespace VLRCpp;
     using namespace VLR;
 
-    shot->scene = context->createScene(context->createStaticTransform(translate(0.0f, 0.0f, 0.0f)));
+    shot->scene = context->createScene();
 
     InternalNodeRef modelNode;
 
@@ -972,7 +972,7 @@ void createColorCheckerScene(const VLRCpp::ContextRef &context, Shot* shot) {
     using namespace VLRCpp;
     using namespace VLR;
 
-    shot->scene = context->createScene(context->createStaticTransform(translate(0.0f, 0.0f, 0.0f)));
+    shot->scene = context->createScene();
 
     const float ColorCheckerLambdas[] = {
         380, 390, 400, 410, 420, 430, 440, 450, 460, 470, 480, 490, 500, 510, 520, 530, 540, 550, 560, 570, 580, 590, 600, 610, 620, 630, 640, 650, 660, 670, 680, 690, 700, 710, 720, 730
@@ -1128,7 +1128,7 @@ void createColorInterpolationTestScene(const VLRCpp::ContextRef &context, Shot* 
     using namespace VLRCpp;
     using namespace VLR;
 
-    shot->scene = context->createScene(context->createStaticTransform(translate(0.0f, 0.0f, 0.0f)));
+    shot->scene = context->createScene();
 
     InternalNodeRef modelNode;
 
@@ -1261,7 +1261,7 @@ void createSubstanceManScene(const VLRCpp::ContextRef &context, Shot* shot) {
     using namespace VLRCpp;
     using namespace VLR;
 
-    shot->scene = context->createScene(context->createStaticTransform(translate(0.0f, 0.0f, 0.0f)));
+    shot->scene = context->createScene();
 
     InternalNodeRef modelNode;
 
@@ -1468,7 +1468,7 @@ void createGalleryScene(const VLRCpp::ContextRef &context, Shot* shot) {
     using namespace VLRCpp;
     using namespace VLR;
 
-    shot->scene = context->createScene(context->createStaticTransform(translate(0.0f, 0.0f, 0.0f)));
+    shot->scene = context->createScene();
 
     InternalNodeRef modelNode;
 
@@ -1556,7 +1556,7 @@ void createHairballScene(const VLRCpp::ContextRef &context, Shot* shot) {
     using namespace VLRCpp;
     using namespace VLR;
 
-    shot->scene = context->createScene(context->createStaticTransform(translate(0.0f, 0.0f, 0.0f)));
+    shot->scene = context->createScene();
 
     InternalNodeRef modelNode;
 
@@ -1647,7 +1647,7 @@ void createRungholtScene(const VLRCpp::ContextRef &context, Shot* shot) {
     using namespace VLRCpp;
     using namespace VLR;
 
-    shot->scene = context->createScene(context->createStaticTransform(translate(0.0f, 0.0f, 0.0f)));
+    shot->scene = context->createScene();
 
     InternalNodeRef modelNode;
 
@@ -1693,7 +1693,7 @@ void createRungholtScene(const VLRCpp::ContextRef &context, Shot* shot) {
         //}
 
         /*if (imgAlpha) {
-            socketAlpha = texAlpha->getSocket(VLRShaderNodeSocketType_float, 0);
+            socketAlpha = texAlpha->getSocket(VLRShaderNodeSocketType_float1, 0);
         }
         else*/ if (imgDiffuse && imgDiffuse->originalHasAlpha()) {
             socketAlpha = texDiffuse->getSocket(VLRShaderNodeSocketType_Alpha, 0);
@@ -1774,7 +1774,7 @@ void createPowerplantScene(const VLRCpp::ContextRef &context, Shot* shot) {
     using namespace VLRCpp;
     using namespace VLR;
 
-    shot->scene = context->createScene(context->createStaticTransform(translate(0.0f, 0.0f, 0.0f)));
+    shot->scene = context->createScene();
 
     InternalNodeRef modelNode;
 
@@ -1844,7 +1844,7 @@ void createAmazonBistroExteriorScene(const VLRCpp::ContextRef &context, Shot* sh
     using namespace VLRCpp;
     using namespace VLR;
 
-    shot->scene = context->createScene(context->createStaticTransform(translate(0.0f, 0.0f, 0.0f)));
+    shot->scene = context->createScene();
 
     InternalNodeRef modelNode;
 
@@ -1927,7 +1927,7 @@ void createAmazonBistroExteriorScene(const VLRCpp::ContextRef &context, Shot* sh
                     socketNormal = texNormal->getSocket(VLRShaderNodeSocketType_Normal3D, 0);
 
                 if (texAlpha)
-                    socketAlpha = texAlpha->getSocket(VLRShaderNodeSocketType_float, 0);
+                    socketAlpha = texAlpha->getSocket(VLRShaderNodeSocketType_float1, 0);
                 else if (imageDiffuse && imageDiffuse->originalHasAlpha())
                     socketAlpha = texDiffuse->getSocket(VLRShaderNodeSocketType_Alpha, 0);
 
@@ -2049,7 +2049,7 @@ void createAmazonBistroInteriorScene(const VLRCpp::ContextRef &context, Shot* sh
     using namespace VLRCpp;
     using namespace VLR;
 
-    shot->scene = context->createScene(context->createStaticTransform(translate(0.0f, 0.0f, 0.0f)));
+    shot->scene = context->createScene();
 
     InternalNodeRef modelNode;
 
@@ -2132,7 +2132,7 @@ void createAmazonBistroInteriorScene(const VLRCpp::ContextRef &context, Shot* sh
                     socketNormal = texNormal->getSocket(VLRShaderNodeSocketType_Normal3D, 0);
 
                 if (texAlpha)
-                    socketAlpha = texAlpha->getSocket(VLRShaderNodeSocketType_float, 0);
+                    socketAlpha = texAlpha->getSocket(VLRShaderNodeSocketType_float1, 0);
                 else if (imageDiffuse && imageDiffuse->originalHasAlpha())
                     socketAlpha = texDiffuse->getSocket(VLRShaderNodeSocketType_Alpha, 0);
 

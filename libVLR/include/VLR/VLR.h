@@ -33,6 +33,7 @@ extern "C" {
         VLRResult_InvalidInstance,
         VLRResult_InvalidArgument,
         VLRResult_IncompatibleNodeType,
+        VLRResult_InternalError,
     };
 
 #if !defined(__cplusplus)
@@ -324,8 +325,8 @@ extern "C" {
     VLR_API VLRResult vlrInternalNodeDestroy(VLRContext context, VLRInternalNode node);
     VLR_API VLRResult vlrInternalNodeSetTransform(VLRInternalNode node, VLRTransform localToWorld);
     VLR_API VLRResult vlrInternalNodeGetTransform(VLRInternalNode node, VLRTransformConst* localToWorld);
-    VLR_API VLRResult vlrInternalNodeAddChild(VLRInternalNode node, VLRObject child);
-    VLR_API VLRResult vlrInternalNodeRemoveChild(VLRInternalNode node, VLRObject child);
+    VLR_API VLRResult vlrInternalNodeAddChild(VLRInternalNode node, VLRNode child);
+    VLR_API VLRResult vlrInternalNodeRemoveChild(VLRInternalNode node, VLRNode child);
 
 
 
@@ -333,8 +334,8 @@ extern "C" {
                                      VLRTransform transform);
     VLR_API VLRResult vlrSceneDestroy(VLRContext context, VLRScene scene);
     VLR_API VLRResult vlrSceneSetTransform(VLRScene scene, VLRTransform localToWorld);
-    VLR_API VLRResult vlrSceneAddChild(VLRScene scene, VLRObject child);
-    VLR_API VLRResult vlrSceneRemoveChild(VLRScene scene, VLRObject child);
+    VLR_API VLRResult vlrSceneAddChild(VLRScene scene, VLRNode child);
+    VLR_API VLRResult vlrSceneRemoveChild(VLRScene scene, VLRNode child);
     VLR_API VLRResult vlrSceneSetEnvironment(VLRScene scene, VLREnvironmentEmitterSurfaceMaterial material);
     VLR_API VLRResult vlrSceneSetEnvironmentRotation(VLRScene scene, float rotationPhi);
 
