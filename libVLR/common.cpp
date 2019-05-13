@@ -22,12 +22,13 @@ namespace VLR {
             TCHAR filepath[1024];
             auto length = GetModuleFileName(NULL, filepath, 1024);
             VLRAssert(length > 0, "Failed to query the executable path.");
-
-        //    ret = filepath;
+#ifdef NDEBUG // only in release
+            ret = filepath;
+#endif
 #else
             static_assert(false, "Not implemented");
 #endif
-        //    ret = ret.remove_filename();
+            ret = ret.remove_filename();
 
             done = true;
         }

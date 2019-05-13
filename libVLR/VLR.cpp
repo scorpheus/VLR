@@ -237,6 +237,26 @@ VLR_API VLRResult vlrContextUnmapOutputBuffer(VLRContext context) {
     VLR_RETURN_INTERNAL_ERROR();
 }
 
+VLR_API VLRResult vlrContextMapOutputBufferDenoise(VLRContext context, void **ptr) {
+	try {
+		if (ptr == nullptr)
+			return VLRResult_InvalidArgument;
+		*ptr = context->mapOutputBufferDenoise();
+
+		return VLRResult_NoError;
+	}
+	VLR_RETURN_INTERNAL_ERROR();
+}
+
+VLR_API VLRResult vlrContextUnmapOutputBufferDenoise(VLRContext context) {
+	try {
+		context->unmapOutputBufferDenoise();
+
+		return VLRResult_NoError;
+	}
+	VLR_RETURN_INTERNAL_ERROR();
+}
+
 VLR_API VLRResult vlrContextGetOutputBufferSize(VLRContext context, uint32_t* width, uint32_t* height) {
     try {
         if (width == nullptr || height == nullptr)

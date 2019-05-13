@@ -1215,6 +1215,16 @@ namespace VLRCpp {
             errorCheck(vlrContextUnmapOutputBuffer(m_rawContext));
         }
 
+		void *mapOutputBufferDenoise() const {
+			void *ptr = nullptr;
+			errorCheck(vlrContextMapOutputBufferDenoise(m_rawContext, &ptr));
+			return ptr;
+		}
+
+		void unmapOutputBufferDenoise() const {
+			errorCheck(vlrContextUnmapOutputBufferDenoise(m_rawContext));
+		}
+
         void getOutputBufferSize(uint32_t* width, uint32_t* height) const {
             errorCheck(vlrContextGetOutputBufferSize(m_rawContext, width, height));
         }

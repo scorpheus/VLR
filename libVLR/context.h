@@ -106,7 +106,7 @@ namespace VLR {
 
         optix::Buffer m_rawOutputBuffer;
         optix::Buffer m_outputBuffer;
-		optix::Buffer m_outputRGBBuffer;
+		optix::Buffer m_outputBufferDenoise;
         optix::Buffer m_rngBuffer;
         uint32_t m_width;
         uint32_t m_height;
@@ -127,6 +127,8 @@ namespace VLR {
         void bindOutputBuffer(uint32_t width, uint32_t height, uint32_t glBufferID, uint32_t glBufferDenoiseID);
         void* mapOutputBuffer();
         void unmapOutputBuffer();
+		void *mapOutputBufferDenoise();
+		void unmapOutputBufferDenoise();
         void getOutputBufferSize(uint32_t* width, uint32_t* height);
 
         void render(Scene &scene, Camera* camera, uint32_t shrinkCoeff, bool firstFrame, uint32_t* numAccumFrames);

@@ -489,8 +489,8 @@ namespace VLR {
     void Context::bindOutputBuffer(uint32_t width, uint32_t height, uint32_t glBufferID, uint32_t glBufferDenoiseID) {
         if (m_outputBuffer)
 			m_outputBuffer->destroy();
-		if (m_outputRGBBuffer)
-			m_outputRGBBuffer->destroy();
+		if (m_outputBufferDenoise)
+			m_outputBufferDenoise->destroy();
         if (m_rawOutputBuffer)
             m_rawOutputBuffer->destroy();
         if (m_rngBuffer)
@@ -500,16 +500,16 @@ namespace VLR {
         m_height = height;
 
         if (glBufferID > 0) {
-			m_outputRGBBuffer = m_optixContext->createBufferFromGLBO(RT_BUFFER_INPUT_OUTPUT, glBufferID);
-			m_outputRGBBuffer->setFormat(RT_FORMAT_FLOAT4);
-			m_outputRGBBuffer->setSize(m_width, m_height);
+			m_outputBuffer = m_optixContext->createBufferFromGLBO(RT_BUFFER_INPUT_OUTPUT, glBufferID);
+			m_outputBuffer->setFormat(RT_FORMAT_FLOAT4);
+			m_outputBuffer->setSize(m_width, m_height);
         }
         else {
-			m_outputRGBBuffer = m_optixContext->createBuffer(RT_BUFFER_INPUT_OUTPUT, RT_FORMAT_FLOAT4, m_width, m_height);
+			m_outputBuffer = m_optixContext->createBuffer(RT_BUFFER_INPUT_OUTPUT, RT_FORMAT_FLOAT4, m_width, m_height);
 		}
 
 		//m_outputRGBBuffer->setElementSize(sizeof(RGBSpectrum));
-		m_optixContext["VLR::pv_RGBBuffer"]->set(m_outputRGBBuffer);
+		m_optixContext["VLR::pv_RGBBuffer"]->set(m_outputBuffer);
 
         m_rawOutputBuffer = m_optixContext->createBuffer(RT_BUFFER_INPUT_OUTPUT, RT_FORMAT_USER, m_width, m_height);
         m_rawOutputBuffer->setElementSize(sizeof(SpectrumStorage));
@@ -560,15 +560,15 @@ namespace VLR {
 		// ranging from 0.0 to 1.0
 		float denoiseBlend = 0.f;
 		if (glBufferDenoiseID > 0) {
-			m_outputBuffer = m_optixContext->createBufferFromGLBO(RT_BUFFER_INPUT_OUTPUT, glBufferDenoiseID);
-			m_outputBuffer->setFormat(RT_FORMAT_FLOAT4);
-			m_outputBuffer->setSize(m_width, m_height);
+			m_outputBufferDenoise = m_optixContext->createBufferFromGLBO(RT_BUFFER_INPUT_OUTPUT, glBufferDenoiseID);
+			m_outputBufferDenoise->setFormat(RT_FORMAT_FLOAT4);
+			m_outputBufferDenoise->setSize(m_width, m_height);
 		} else {
-			m_outputBuffer = m_optixContext->createBuffer(RT_BUFFER_INPUT_OUTPUT, RT_FORMAT_FLOAT4, m_width, m_height);
+			m_outputBufferDenoise = m_optixContext->createBuffer(RT_BUFFER_INPUT_OUTPUT, RT_FORMAT_FLOAT4, m_width, m_height);
 		}
 		
 		m_denoiserStage->declareVariable("input_buffer")->set(m_optixContext["VLR::pv_RGBBuffer"]->getBuffer());
-		m_denoiserStage->declareVariable("output_buffer")->set(m_outputBuffer);
+		m_denoiserStage->declareVariable("output_buffer")->set(m_outputBufferDenoise);
 		m_denoiserStage->declareVariable("blend")->setFloat(denoiseBlend);
 		m_denoiserStage->declareVariable("input_albedo_buffer");
 		m_denoiserStage->declareVariable("input_normal_buffer");
@@ -594,6 +594,17 @@ namespace VLR {
     void Context::unmapOutputBuffer() {
         m_outputBuffer->unmap();
     }
+
+	void *Context::mapOutputBufferDenoise() {
+		if (!m_outputBufferDenoise)
+			return nullptr;
+
+		return m_outputBufferDenoise->map();
+	}
+
+	void Context::unmapOutputBufferDenoise() {
+		m_outputBufferDenoise->unmap();
+	}
 
     void Context::getOutputBufferSize(uint32_t* width, uint32_t* height) {
         *width = m_width;
