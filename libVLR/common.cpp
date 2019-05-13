@@ -23,11 +23,11 @@ namespace VLR {
             auto length = GetModuleFileName(NULL, filepath, 1024);
             VLRAssert(length > 0, "Failed to query the executable path.");
 
-            ret = filepath;
+        //    ret = filepath;
 #else
             static_assert(false, "Not implemented");
 #endif
-            ret = ret.remove_filename();
+        //    ret = ret.remove_filename();
 
             done = true;
         }
