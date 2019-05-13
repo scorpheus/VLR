@@ -102,7 +102,7 @@ extern "C" {
     VLR_API VLRResult vlrCreateContext(VLRContext* context, bool logging, bool enableRTX, uint32_t maxCallableDepth, uint32_t stackSize, const int32_t* devices, uint32_t numDevices);
     VLR_API VLRResult vlrDestroyContext(VLRContext context);
 
-    VLR_API VLRResult vlrContextBindOutputBuffer(VLRContext context, uint32_t width, uint32_t height, uint32_t bufferID);
+    VLR_API VLRResult vlrContextBindOutputBuffer(VLRContext context, uint32_t width, uint32_t height, uint32_t bufferID, uint32_t bufferIDDenoise);
     VLR_API VLRResult vlrContextMapOutputBuffer(VLRContext context, void** ptr);
     VLR_API VLRResult vlrContextUnmapOutputBuffer(VLRContext context);
     VLR_API VLRResult vlrContextGetOutputBufferSize(VLRContext context, uint32_t* width, uint32_t* height);

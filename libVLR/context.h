@@ -5,7 +5,7 @@
 
 #include "slot_finder.h"
 
-#if defined(DEBUG)
+#if defined(_DEBUG)
 #   define VLR_PTX_DIR "resources/ptxes/Debug/"
 #else
 #   define VLR_PTX_DIR "resources/ptxes/Release/"
@@ -99,8 +99,14 @@ namespace VLR {
         uint32_t m_maxNumSurfaceMaterialDescriptors;
         SlotFinder m_surfMatDescSlotFinder;
 
+		optix::PostprocessingStage m_denoiserStage;
+		optix::Buffer trainingDataBuffer;
+				
+		optix::CommandList commandListWithDenoiser;
+
         optix::Buffer m_rawOutputBuffer;
         optix::Buffer m_outputBuffer;
+		optix::Buffer m_outputRGBBuffer;
         optix::Buffer m_rngBuffer;
         uint32_t m_width;
         uint32_t m_height;
@@ -118,7 +124,7 @@ namespace VLR {
             return m_RTXEnabled;
         }
 
-        void bindOutputBuffer(uint32_t width, uint32_t height, uint32_t glBufferID);
+        void bindOutputBuffer(uint32_t width, uint32_t height, uint32_t glBufferID, uint32_t glBufferDenoiseID);
         void* mapOutputBuffer();
         void unmapOutputBuffer();
         void getOutputBufferSize(uint32_t* width, uint32_t* height);

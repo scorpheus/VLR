@@ -281,7 +281,7 @@ namespace VLR {
 
     void SHTransform::resolveTransform() {
         int32_t stackIdx = 0;
-        const SHTransform* stack[5];
+        const SHTransform* stack[10];
         std::fill_n(stack, lengthof(stack), nullptr);
         const SHTransform* nextSHTr = m_childIsTransform ? m_childTransform : nullptr;
         while (nextSHTr) {

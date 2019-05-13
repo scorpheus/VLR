@@ -1198,8 +1198,8 @@ namespace VLRCpp {
             return m_rawContext;
         }
 
-        void bindOutputBuffer(uint32_t width, uint32_t height, uint32_t glBufferID) const {
-            errorCheck(vlrContextBindOutputBuffer(m_rawContext, width, height, glBufferID));
+        void bindOutputBuffer(uint32_t width, uint32_t height, uint32_t glBufferID, uint32_t glBufferIDDenoise) const {
+			errorCheck(vlrContextBindOutputBuffer(m_rawContext, width, height, glBufferID, glBufferIDDenoise));
         }
 
         void* mapOutputBuffer() const {

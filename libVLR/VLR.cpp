@@ -174,8 +174,8 @@ VLR_API VLRResult vlrDestroyContext(VLRContext context) {
 
 
 
-VLR_API VLRResult vlrContextBindOutputBuffer(VLRContext context, uint32_t width, uint32_t height, uint32_t bufferID) {
-    context->bindOutputBuffer(width, height, bufferID);
+VLR_API VLRResult vlrContextBindOutputBuffer(VLRContext context, uint32_t width, uint32_t height, uint32_t bufferID, uint32_t bufferIDDenoise) {
+	context->bindOutputBuffer(width, height, bufferID, bufferIDDenoise);
 
     return VLRResult_NoError;
 }

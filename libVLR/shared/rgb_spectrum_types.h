@@ -46,12 +46,12 @@ namespace VLR {
 
     template <typename RealType>
     struct RGBSpectrumTemplate {
-        RealType r, g, b;
+        RealType r, g, b, a;
 
     public:
         RT_FUNCTION RGBSpectrumTemplate() {}
-        RT_FUNCTION constexpr RGBSpectrumTemplate(RealType v) : r(v), g(v), b(v) {}
-        RT_FUNCTION constexpr RGBSpectrumTemplate(RealType rr, RealType gg, RealType bb) : r(rr), g(gg), b(bb) {}
+		RT_FUNCTION constexpr RGBSpectrumTemplate(RealType v) : r(v), g(v), b(v), a((RealType)1) {}
+		RT_FUNCTION constexpr RGBSpectrumTemplate(RealType rr, RealType gg, RealType bb) : r(rr), g(gg), b(bb), a((RealType)1) {}
 
         RT_FUNCTION RGBSpectrumTemplate operator+() const {
             return *this;
