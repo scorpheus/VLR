@@ -758,7 +758,33 @@ namespace VLR {
         }
 
         RT_FUNCTION Matrix3x3Template &invert() {
-            VLRAssert_NotImplemented();
+			// covariants
+			Matrix3x3Template<RealType> i;
+			i.m00 = m11 * m22 - m12 * m21;
+			i.m01 = m02 * m21 - m01 * m22;
+			i.m02 = m01 * m12 - m02 * m11;
+			i.m10 = m12 * m20 - m10 * m22;
+			i.m11 = m00 * m22 - m02 * m20;
+			i.m12 = m02 * m10 - m00 * m12;
+			i.m20 = m10 * m21 - m11 * m20;
+			i.m21 = m01 * m20 - m00 * m21;
+			i.m22 = m00 * m11 - m01 * m10;
+
+			float k = m00 * i.m00 + m01 * i.m10 + m02 * i.m20;
+			if (!k)
+				return *this;
+
+			k = 1.f / k;
+			i.m00 *= k;
+			i.m01 *= k;
+			i.m02 *= k;
+			i.m10 *= k;
+			i.m11 *= k;
+			i.m12 *= k;
+			i.m20 *= k;
+			i.m21 *= k;
+			i.m22 *= k;
+			*this = i;
             return *this;
         }
 
@@ -877,6 +903,15 @@ namespace VLR {
         RT_FUNCTION constexpr Matrix4x4Template(const Vector4DTemplate<RealType> &col0, const Vector4DTemplate<RealType> &col1, const Vector4DTemplate<RealType> &col2, const Vector4DTemplate<RealType> &col3) :
             c0(col0), c1(col1), c2(col2), c3(col3)
         { }
+
+		//
+		RT_FUNCTION constexpr Matrix4x4Template(const Matrix3x3Template<RealType> &o) {
+			m00 = o.m00;			m10 = o.m10;			m20 = o.m20;			m30 = 0;
+			m01 = o.m01;			m11 = o.m11;			m21 = o.m21;			m31 = 0;
+			m02 = o.m02;			m12 = o.m12;			m22 = o.m22;			m32 = 0;
+			m03 = 0;				m13 = 0;				m23 = 0;				m33 = 1;
+		}
+
 
         RT_FUNCTION Matrix4x4Template operator+() const { return *this; }
         RT_FUNCTION Matrix4x4Template operator-() const { return Matrix4x4Template(-c0, -c1, -c2, -c3); }

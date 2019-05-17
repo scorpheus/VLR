@@ -23,7 +23,7 @@ namespace VLR {
             auto length = GetModuleFileName(NULL, filepath, 1024);
             VLRAssert(length > 0, "Failed to query the executable path.");
 #ifdef NDEBUG // only in release
-            ret = filepath;
+       //   ret = filepath;
 #endif
 #else
             static_assert(false, "Not implemented");

@@ -136,7 +136,9 @@ namespace VLR {
         float initImportance;
         WavelengthSamples wls;
         SampledSpectrum alpha;
-        SampledSpectrum contribution;
+		SampledSpectrum contribution;
+		SampledSpectrum normal;
+		SampledSpectrum albedo;
         Point3D origin;
         Vector3D direction;
         float prevDirPDF;

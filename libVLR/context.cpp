@@ -491,7 +491,11 @@ namespace VLR {
 			m_outputBuffer->destroy();
 		if (m_outputBufferDenoise)
 			m_outputBufferDenoise->destroy();
-        if (m_rawOutputBuffer)
+		if (m_outputNormalBuffer)
+			m_outputNormalBuffer->destroy();
+		if (m_outputAlbedoBuffer)
+			m_outputAlbedoBuffer->destroy();
+		if (m_rawOutputBuffer)
             m_rawOutputBuffer->destroy();
         if (m_rngBuffer)
             m_rngBuffer->destroy();
@@ -507,14 +511,22 @@ namespace VLR {
         else {
 			m_outputBuffer = m_optixContext->createBuffer(RT_BUFFER_INPUT_OUTPUT, RT_FORMAT_FLOAT4, m_width, m_height);
 		}
+		m_outputNormalBuffer = m_optixContext->createBuffer(RT_BUFFER_INPUT_OUTPUT, RT_FORMAT_FLOAT4, m_width, m_height);
+		m_outputAlbedoBuffer = m_optixContext->createBuffer(RT_BUFFER_INPUT_OUTPUT, RT_FORMAT_FLOAT4, m_width, m_height);
 
 		//m_outputRGBBuffer->setElementSize(sizeof(RGBSpectrum));
 		m_optixContext["VLR::pv_RGBBuffer"]->set(m_outputBuffer);
+		//m_optixContext["VLR::pv_RGBBuffer"]->set(m_outputNormalBuffer);
 
         m_rawOutputBuffer = m_optixContext->createBuffer(RT_BUFFER_INPUT_OUTPUT, RT_FORMAT_USER, m_width, m_height);
         m_rawOutputBuffer->setElementSize(sizeof(SpectrumStorage));
         m_optixContext["VLR::pv_spectrumBuffer"]->set(m_rawOutputBuffer);
         m_optixContext["VLR::pv_outputBuffer"]->set(m_rawOutputBuffer);
+				
+	//	m_optixContext["VLR::pv_outputNormalBuffer"]->set(m_outputBuffer);
+		m_optixContext["VLR::pv_outputNormalBuffer"]->set(m_outputNormalBuffer);
+		m_optixContext["VLR::pv_outputAlbedoBuffer"]->set(m_outputAlbedoBuffer);
+	//	m_optixContext["VLR::pv_outputAlbedoBuffer"]->set(m_outputBuffer);
 
         m_rngBuffer = m_optixContext->createBuffer(RT_BUFFER_INPUT_OUTPUT, RT_FORMAT_USER, m_width, m_height);
         m_rngBuffer->setElementSize(sizeof(uint64_t));
@@ -570,9 +582,13 @@ namespace VLR {
 		m_denoiserStage->declareVariable("input_buffer")->set(m_optixContext["VLR::pv_RGBBuffer"]->getBuffer());
 		m_denoiserStage->declareVariable("output_buffer")->set(m_outputBufferDenoise);
 		m_denoiserStage->declareVariable("blend")->setFloat(denoiseBlend);
-		m_denoiserStage->declareVariable("input_albedo_buffer");
-		m_denoiserStage->declareVariable("input_normal_buffer");
-
+		if (0) { // use albedo and normal buffer for the denoiser
+			m_denoiserStage->declareVariable("input_albedo_buffer")->set(m_optixContext["VLR::pv_outputAlbedoBuffer"]->getBuffer());
+			m_denoiserStage->declareVariable("input_normal_buffer")->set(m_optixContext["VLR::pv_outputNormalBuffer"]->getBuffer());
+		} else {
+			m_denoiserStage->declareVariable("input_albedo_buffer");
+			m_denoiserStage->declareVariable("input_normal_buffer");
+		}
 		
 		if (commandListWithDenoiser) {
 			commandListWithDenoiser->destroy();

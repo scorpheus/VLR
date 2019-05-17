@@ -107,7 +107,9 @@ namespace VLR {
         optix::Buffer m_rawOutputBuffer;
         optix::Buffer m_outputBuffer;
 		optix::Buffer m_outputBufferDenoise;
-        optix::Buffer m_rngBuffer;
+		optix::Buffer m_rngBuffer;
+		optix::Buffer m_outputNormalBuffer;
+		optix::Buffer m_outputAlbedoBuffer;
         uint32_t m_width;
         uint32_t m_height;
         uint32_t m_numAccumFrames;

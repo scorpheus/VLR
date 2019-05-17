@@ -50,73 +50,75 @@ namespace VLR {
 
     public:
         RT_FUNCTION RGBSpectrumTemplate() {}
-		RT_FUNCTION constexpr RGBSpectrumTemplate(RealType v) : r(v), g(v), b(v), a((RealType)1) {}
-		RT_FUNCTION constexpr RGBSpectrumTemplate(RealType rr, RealType gg, RealType bb) : r(rr), g(gg), b(bb), a((RealType)1) {}
+		RT_FUNCTION constexpr RGBSpectrumTemplate(RealType v) : r(v), g(v), b(v), a((RealType)v) {}
+		RT_FUNCTION constexpr RGBSpectrumTemplate(RealType rr, RealType gg, RealType bb) : r(rr), g(gg), b(bb), a((RealType)0) {}
+		RT_FUNCTION constexpr RGBSpectrumTemplate(RealType rr, RealType gg, RealType bb, RealType aa) : r(rr), g(gg), b(bb), a(aa) {}
 
         RT_FUNCTION RGBSpectrumTemplate operator+() const {
             return *this;
         }
         RT_FUNCTION RGBSpectrumTemplate operator-() const {
-            return RGBSpectrumTemplate(-r, -g, -b);
+			return RGBSpectrumTemplate(-r, -g, -b, -a);
         }
 
         RT_FUNCTION RGBSpectrumTemplate operator+(const RGBSpectrumTemplate &c) const {
-            return RGBSpectrumTemplate(r + c.r, g + c.g, b + c.b);
+			return RGBSpectrumTemplate(r + c.r, g + c.g, b + c.b, a + c.a);
         }
         RT_FUNCTION RGBSpectrumTemplate operator-(const RGBSpectrumTemplate &c) const {
-            return RGBSpectrumTemplate(r - c.r, g - c.g, b - c.b);
+			return RGBSpectrumTemplate(r - c.r, g - c.g, b - c.b, a - c.a);
         }
         RT_FUNCTION RGBSpectrumTemplate operator*(const RGBSpectrumTemplate &c) const {
-            return RGBSpectrumTemplate(r * c.r, g * c.g, b * c.b);
+			return RGBSpectrumTemplate(r * c.r, g * c.g, b * c.b, a * c.a);
         }
         RT_FUNCTION RGBSpectrumTemplate operator/(const RGBSpectrumTemplate &c) const {
-            return RGBSpectrumTemplate(r / c.r, g / c.g, b / c.b);
+			return RGBSpectrumTemplate(r / c.r, g / c.g, b / c.b, a / c.a);
         }
         RT_FUNCTION RGBSpectrumTemplate safeDivide(const RGBSpectrumTemplate &c) const {
             return RGBSpectrumTemplate(c.r > 0.0f ? r / c.r : 0.0f,
                                        c.g > 0.0f ? g / c.g : 0.0f,
-                                       c.b > 0.0f ? b / c.b : 0.0f);
+                                       c.b > 0.0f ? b / c.b : 0.0f,
+                                       c.a > 0.0f ? a / c.a : 0.0f);
         }
         RT_FUNCTION RGBSpectrumTemplate operator*(RealType s) const {
-            return RGBSpectrumTemplate(r * s, g * s, b * s);
+			return RGBSpectrumTemplate(r * s, g * s, b * s, a * s);
         }
         RT_FUNCTION RGBSpectrumTemplate operator/(RealType s) const {
             RealType rc = 1.0f / s;
-            return RGBSpectrumTemplate(r * rc, g * rc, b * rc);
+			return RGBSpectrumTemplate(r * rc, g * rc, b * rc, a * rc);
         }
         RT_FUNCTION friend inline RGBSpectrumTemplate operator*(RealType s, const RGBSpectrumTemplate &c) {
-            return RGBSpectrumTemplate(s * c.r, s * c.g, s * c.b);
+			return RGBSpectrumTemplate(s * c.r, s * c.g, s * c.b, s * c.a);
         }
 
         RT_FUNCTION RGBSpectrumTemplate &operator+=(const RGBSpectrumTemplate &c) {
-            r += c.r; g += c.g; b += c.b;
+            r += c.r; g += c.g; b += c.b; a += c.a;
             return *this;
         }
         RT_FUNCTION RGBSpectrumTemplate &operator-=(const RGBSpectrumTemplate &c) {
-            r -= c.r; g -= c.g; b -= c.b;
+            r -= c.r; g -= c.g; b -= c.b; a -= c.a;
             return *this;
         }
         RT_FUNCTION RGBSpectrumTemplate &operator*=(const RGBSpectrumTemplate &c) {
-            r *= c.r; g *= c.g; b *= c.b;
+            r *= c.r; g *= c.g; b *= c.b; a *= c.a;
             return *this;
         }
         RT_FUNCTION RGBSpectrumTemplate &operator/=(const RGBSpectrumTemplate &c) {
-            r /= c.r; g /= c.g; b /= c.b;
+            r /= c.r; g /= c.g; b /= c.b; a /= c.a;
             return *this;
         }
         RT_FUNCTION RGBSpectrumTemplate &operator*=(RealType s) {
-            r *= s; g *= s; b *= s; return *this;
+            r *= s; g *= s; b *= s; a *= s; return *this;
         }
         RT_FUNCTION RGBSpectrumTemplate &operator/=(RealType s) {
-            RealType rc = 1.0f / s; r *= rc; g *= rc; b *= rc;
+            RealType rc = 1.0f / s; r *= rc; g *= rc; b *= rc; a *= rc;
             return *this;
         }
 
         RT_FUNCTION bool operator==(const RGBSpectrumTemplate &c) const {
-            return r == c.r && g == c.g && b == c.b;
+			return r == c.r && g == c.g && b == c.b && a == c.a;
         }
         RT_FUNCTION bool operator!=(const RGBSpectrumTemplate &c) const {
-            return r != c.r || g != c.g || b != c.b;
+			return r != c.r || g != c.g || b != c.b || a != c.a;
         }
 
         RT_FUNCTION RealType &operator[](unsigned int index) {
@@ -158,6 +160,9 @@ namespace VLR {
             return allFinite() && !hasNegative();
         }
 
+		RT_FUNCTION void setAlpha(RealType _a) {
+			a = _a;
+		}
         // setting "primary" to 1.0 might introduce bias.
         RT_FUNCTION RealType importance(uint16_t selectedLambda) const {
             RealType sum = r + g + b;

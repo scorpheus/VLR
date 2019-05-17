@@ -1057,7 +1057,8 @@ namespace VLR {
     struct DiffuseAndSpecularBRDF {
         SampledSpectrum diffuseColor;
         SampledSpectrum specularF0Color;
-        float roughness;
+		float roughness;
+		SampledSpectrum albedoColor;
     };
 
     RT_CALLABLE_PROGRAM uint32_t UE4SurfaceMaterial_setupBSDF(const uint32_t* matDesc, const SurfacePoint &surfPt, const WavelengthSamples &wls, uint32_t* params) {
@@ -1074,7 +1075,8 @@ namespace VLR {
         const float specular = 0.5f;
         p.diffuseColor = baseColor * (1 - metallic);
         p.specularF0Color = lerp(0.08f * specular * SampledSpectrum::One(), baseColor, metallic);
-        p.roughness = roughness;
+		p.roughness = roughness;
+		p.albedoColor = baseColor;
 
         return sizeof(DiffuseAndSpecularBRDF) / 4;
     }
@@ -1083,7 +1085,7 @@ namespace VLR {
         auto &p = *(DiffuseAndSpecularBRDF*)params;
         auto &mat = *(const OldStyleSurfaceMaterial*)matDesc;
 
-        p.diffuseColor = calcNode(mat.nodeDiffuseColor, mat.immDiffuseColor, surfPt, wls);
+        p.albedoColor = p.diffuseColor = calcNode(mat.nodeDiffuseColor, mat.immDiffuseColor, surfPt, wls);
         p.specularF0Color = calcNode(mat.nodeSpecularColor, mat.immSpecularColor, surfPt, wls);
         p.roughness = std::fmax(0.01f, 1.0f - calcNode(mat.nodeGlossiness, mat.immGlossiness, surfPt, wls));
 
