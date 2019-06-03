@@ -1336,6 +1336,16 @@ namespace VLR {
     RT_FUNCTION inline QuaternionTemplate<RealType> qRotateY(RealType angle) { return qRotate(angle, Vector3DTemplate<RealType>(0, 1, 0)); }
     template <typename RealType>
     RT_FUNCTION inline QuaternionTemplate<RealType> qRotateZ(RealType angle) { return qRotate(angle, Vector3DTemplate<RealType>(0, 0, 1)); }
+	
+	template <typename RealType>
+	RT_FUNCTION inline float Len2(const QuaternionTemplate<RealType> &q) { return q.x * q.x + q.y * q.y + q.z * q.z + q.w * q.w; }
+
+	template <typename RealType>
+	RT_FUNCTION inline QuaternionTemplate<RealType> Inverse(const QuaternionTemplate<RealType> &q) {
+		const float l = Len2(q);
+		return l ? Quaternion(q.x / -l, q.y / -l, q.z / -l, q.w / l) : Quaternion(0.f, 0.f, 0.f, 1.f);
+	}
+
 
     template <typename RealType>
     RT_FUNCTION inline QuaternionTemplate<RealType> Slerp(RealType t, const QuaternionTemplate<RealType> &q0, const QuaternionTemplate<RealType> &q1) {
