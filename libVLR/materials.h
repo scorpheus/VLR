@@ -28,8 +28,7 @@ namespace VLR {
         static void setupMaterialDescriptorHead(Context &context, const OptiXProgramSet &progSet, Shared::SurfaceMaterialDescriptor* matDesc);
 
     public:
-        static const ClassIdentifier ClassID;
-        virtual const ClassIdentifier &getClass() const { return ClassID; }
+        VLR_DECLARE_TYPE_AWARE_CLASS_INTERFACE();
 
         static void initialize(Context &context);
         static void finalize(Context &context);
@@ -55,8 +54,7 @@ namespace VLR {
         void setupMaterialDescriptor() const;
 
     public:
-        static const ClassIdentifier ClassID;
-        virtual const ClassIdentifier &getClass() const { return ClassID; }
+        VLR_DECLARE_TYPE_AWARE_CLASS_INTERFACE();
 
         static void initialize(Context &context);
         static void finalize(Context &context);
@@ -64,8 +62,8 @@ namespace VLR {
         MatteSurfaceMaterial(Context &context);
         ~MatteSurfaceMaterial();
 
-        bool setNodeAlbedo(const ShaderNodeSocket &outputSocket);
-        void setImmediateValueAlbedo(ColorSpace colorSpace, float e0, float e1, float e2);
+        bool setAlbedo(const ShaderNodeSocket &outputSocket);
+        void setAlbedo(ColorSpace colorSpace, float e0, float e1, float e2);
     };
 
 
@@ -83,8 +81,7 @@ namespace VLR {
         void setupMaterialDescriptor() const;
 
     public:
-        static const ClassIdentifier ClassID;
-        virtual const ClassIdentifier &getClass() const { return ClassID; }
+        VLR_DECLARE_TYPE_AWARE_CLASS_INTERFACE();
 
         static void initialize(Context &context);
         static void finalize(Context &context);
@@ -92,12 +89,12 @@ namespace VLR {
         SpecularReflectionSurfaceMaterial(Context &context);
         ~SpecularReflectionSurfaceMaterial();
 
-        bool setNodeCoeffR(const ShaderNodeSocket &outputSocket);
-        void setImmediateValueCoeffR(ColorSpace colorSpace, float e0, float e1, float e2);
-        bool setNodeEta(const ShaderNodeSocket &outputSocket);
-        void setImmediateValueEta(ColorSpace colorSpace, float e0, float e1, float e2);
-        bool setNode_k(const ShaderNodeSocket &outputSocket);
-        void setImmediateValue_k(ColorSpace colorSpace, float e0, float e1, float e2);
+        bool setCoeffR(const ShaderNodeSocket &outputSocket);
+        void setCoeffR(ColorSpace colorSpace, float e0, float e1, float e2);
+        bool setEta(const ShaderNodeSocket &outputSocket);
+        void setEta(ColorSpace colorSpace, float e0, float e1, float e2);
+        bool set_k(const ShaderNodeSocket &outputSocket);
+        void set_k(ColorSpace colorSpace, float e0, float e1, float e2);
     };
 
 
@@ -115,8 +112,7 @@ namespace VLR {
         void setupMaterialDescriptor() const;
 
     public:
-        static const ClassIdentifier ClassID;
-        virtual const ClassIdentifier &getClass() const { return ClassID; }
+        VLR_DECLARE_TYPE_AWARE_CLASS_INTERFACE();
 
         static void initialize(Context &context);
         static void finalize(Context &context);
@@ -124,12 +120,12 @@ namespace VLR {
         SpecularScatteringSurfaceMaterial(Context &context);
         ~SpecularScatteringSurfaceMaterial();
 
-        bool setNodeCoeff(const ShaderNodeSocket &outputSocket);
-        void setImmediateValueCoeff(ColorSpace colorSpace, float e0, float e1, float e2);
-        bool setNodeEtaExt(const ShaderNodeSocket &outputSocket);
-        void setImmediateValueEtaExt(ColorSpace colorSpace, float e0, float e1, float e2);
-        bool setNodeEtaInt(const ShaderNodeSocket &outputSocket);
-        void setImmediateValueEtaInt(ColorSpace colorSpace, float e0, float e1, float e2);
+        bool setCoeff(const ShaderNodeSocket &outputSocket);
+        void setCoeff(ColorSpace colorSpace, float e0, float e1, float e2);
+        bool setEtaExt(const ShaderNodeSocket &outputSocket);
+        void setEtaExt(ColorSpace colorSpace, float e0, float e1, float e2);
+        bool setEtaInt(const ShaderNodeSocket &outputSocket);
+        void setEtaInt(ColorSpace colorSpace, float e0, float e1, float e2);
     };
 
 
@@ -149,8 +145,7 @@ namespace VLR {
         void setupMaterialDescriptor() const;
 
     public:
-        static const ClassIdentifier ClassID;
-        virtual const ClassIdentifier &getClass() const { return ClassID; }
+        VLR_DECLARE_TYPE_AWARE_CLASS_INTERFACE();
 
         static void initialize(Context &context);
         static void finalize(Context &context);
@@ -158,14 +153,14 @@ namespace VLR {
         MicrofacetReflectionSurfaceMaterial(Context &context);
         ~MicrofacetReflectionSurfaceMaterial();
 
-        bool setNodeEta(const ShaderNodeSocket &outputSocket);
-        void setImmediateValueEta(ColorSpace colorSpace, float e0, float e1, float e2);
-        bool setNode_k(const ShaderNodeSocket &outputSocket);
-        void setImmediateValue_k(ColorSpace colorSpace, float e0, float e1, float e2);
-        bool setNodeRoughnessAnisotropyRotation(const ShaderNodeSocket &outputSocket);
-        void setImmediateValueRoughness(float value);
-        void setImmediateValueAnisotropy(float value);
-        void setImmediateValueRotation(float value);
+        bool setEta(const ShaderNodeSocket &outputSocket);
+        void setEta(ColorSpace colorSpace, float e0, float e1, float e2);
+        bool set_k(const ShaderNodeSocket &outputSocket);
+        void set_k(ColorSpace colorSpace, float e0, float e1, float e2);
+        bool setRoughnessAnisotropyRotation(const ShaderNodeSocket &outputSocket);
+        void setRoughness(float value);
+        void setAnisotropy(float value);
+        void setRotation(float value);
     };
 
 
@@ -187,8 +182,7 @@ namespace VLR {
         void setupMaterialDescriptor() const;
 
     public:
-        static const ClassIdentifier ClassID;
-        virtual const ClassIdentifier &getClass() const { return ClassID; }
+        VLR_DECLARE_TYPE_AWARE_CLASS_INTERFACE();
 
         static void initialize(Context &context);
         static void finalize(Context &context);
@@ -196,16 +190,16 @@ namespace VLR {
         MicrofacetScatteringSurfaceMaterial(Context &context);
         ~MicrofacetScatteringSurfaceMaterial();
 
-        bool setNodeCoeff(const ShaderNodeSocket &outputSocket);
-        void setImmediateValueCoeff(ColorSpace colorSpace, float e0, float e1, float e2);
-        bool setNodeEtaExt(const ShaderNodeSocket &outputSocket);
-        void setImmediateValueEtaExt(ColorSpace colorSpace, float e0, float e1, float e2);
-        bool setNodeEtaInt(const ShaderNodeSocket &outputSocket);
-        void setImmediateValueEtaInt(ColorSpace colorSpace, float e0, float e1, float e2);
-        bool setNodeRoughnessAnisotropyRotation(const ShaderNodeSocket &outputSocket);
-        void setImmediateValueRoughness(float value);
-        void setImmediateValueAnisotropy(float value);
-        void setImmediateValueRotation(float value);
+        bool setCoeff(const ShaderNodeSocket &outputSocket);
+        void setCoeff(ColorSpace colorSpace, float e0, float e1, float e2);
+        bool setEtaExt(const ShaderNodeSocket &outputSocket);
+        void setEtaExt(ColorSpace colorSpace, float e0, float e1, float e2);
+        bool setEtaInt(const ShaderNodeSocket &outputSocket);
+        void setEtaInt(ColorSpace colorSpace, float e0, float e1, float e2);
+        bool setRoughnessAnisotropyRotation(const ShaderNodeSocket &outputSocket);
+        void setRoughness(float value);
+        void setAnisotropy(float value);
+        void setRotation(float value);
     };
 
 
@@ -221,8 +215,7 @@ namespace VLR {
         void setupMaterialDescriptor() const;
 
     public:
-        static const ClassIdentifier ClassID;
-        virtual const ClassIdentifier &getClass() const { return ClassID; }
+        VLR_DECLARE_TYPE_AWARE_CLASS_INTERFACE();
 
         static void initialize(Context &context);
         static void finalize(Context &context);
@@ -230,10 +223,10 @@ namespace VLR {
         LambertianScatteringSurfaceMaterial(Context &context);
         ~LambertianScatteringSurfaceMaterial();
 
-        bool setNodeCoeff(const ShaderNodeSocket &outputSocket);
-        void setImmediateValueCoeff(ColorSpace colorSpace, float e0, float e1, float e2);
-        bool setNodeF0(const ShaderNodeSocket &outputSocket);
-        void setImmediateValueF0(float value);
+        bool setCoeff(const ShaderNodeSocket &outputSocket);
+        void setCoeff(ColorSpace colorSpace, float e0, float e1, float e2);
+        bool setF0(const ShaderNodeSocket &outputSocket);
+        void setF0(float value);
     };
 
 
@@ -251,8 +244,7 @@ namespace VLR {
         void setupMaterialDescriptor() const;
 
     public:
-        static const ClassIdentifier ClassID;
-        virtual const ClassIdentifier &getClass() const { return ClassID; }
+        VLR_DECLARE_TYPE_AWARE_CLASS_INTERFACE();
 
         static void initialize(Context &context);
         static void finalize(Context &context);
@@ -260,12 +252,12 @@ namespace VLR {
         UE4SurfaceMaterial(Context &context);
         ~UE4SurfaceMaterial();
 
-        bool setNodeBaseColor(const ShaderNodeSocket &outputSocket);
-        void setImmediateValueBaseColor(ColorSpace colorSpace, float e0, float e1, float e2);
-        bool setNodeOcclusionRoughnessMetallic(const ShaderNodeSocket &outputSocket);
-        void setImmediateValueOcclusion(float value);
-        void setImmediateValueRoughness(float value);
-        void setImmediateValueMetallic(float value);
+        bool setBaseColor(const ShaderNodeSocket &outputSocket);
+        void setBaseColor(ColorSpace colorSpace, float e0, float e1, float e2);
+        bool setOcclusionRoughnessMetallic(const ShaderNodeSocket &outputSocket);
+        void setOcclusion(float value);
+        void setRoughness(float value);
+        void setMetallic(float value);
     };
 
 
@@ -283,8 +275,7 @@ namespace VLR {
         void setupMaterialDescriptor() const;
 
     public:
-        static const ClassIdentifier ClassID;
-        virtual const ClassIdentifier &getClass() const { return ClassID; }
+        VLR_DECLARE_TYPE_AWARE_CLASS_INTERFACE();
 
         static void initialize(Context &context);
         static void finalize(Context &context);
@@ -292,12 +283,12 @@ namespace VLR {
         OldStyleSurfaceMaterial(Context &context);
         ~OldStyleSurfaceMaterial();
 
-        bool setNodeDiffuseColor(const ShaderNodeSocket &outputSocket);
-        void setImmediateValueDiffuseColor(ColorSpace colorSpace, float e0, float e1, float e2);
-        bool setNodeSpecularColor(const ShaderNodeSocket &outputSocket);
-        void setImmediateValueSpecularColor(ColorSpace colorSpace, float e0, float e1, float e2);
-        bool setNodeGlossiness(const ShaderNodeSocket &outputSocket);
-        void setImmediateValueGlossiness(float value);
+        bool setDiffuseColor(const ShaderNodeSocket &outputSocket);
+        void setDiffuseColor(ColorSpace colorSpace, float e0, float e1, float e2);
+        bool setSpecularColor(const ShaderNodeSocket &outputSocket);
+        void setSpecularColor(ColorSpace colorSpace, float e0, float e1, float e2);
+        bool setGlossiness(const ShaderNodeSocket &outputSocket);
+        void setGlossiness(float value);
     };
 
 
@@ -312,8 +303,7 @@ namespace VLR {
         void setupMaterialDescriptor() const;
 
     public:
-        static const ClassIdentifier ClassID;
-        virtual const ClassIdentifier &getClass() const { return ClassID; }
+        VLR_DECLARE_TYPE_AWARE_CLASS_INTERFACE();
 
         static void initialize(Context &context);
         static void finalize(Context &context);
@@ -323,9 +313,9 @@ namespace VLR {
 
         bool isEmitting() const override { return true; }
 
-        bool setNodeEmittance(const ShaderNodeSocket &outputSocket);
-        void setImmediateValueEmittance(ColorSpace colorSpace, float e0, float e1, float e2);
-        void setImmediateValueScale(float value);
+        bool setEmittance(const ShaderNodeSocket &outputSocket);
+        void setEmittance(ColorSpace colorSpace, float e0, float e1, float e2);
+        void setScale(float value);
     };
 
 
@@ -339,8 +329,7 @@ namespace VLR {
         void setupMaterialDescriptor() const;
 
     public:
-        static const ClassIdentifier ClassID;
-        virtual const ClassIdentifier &getClass() const { return ClassID; }
+        VLR_DECLARE_TYPE_AWARE_CLASS_INTERFACE();
 
         static void initialize(Context &context);
         static void finalize(Context &context);
@@ -367,8 +356,7 @@ namespace VLR {
         void setupMaterialDescriptor() const;
 
     public:
-        static const ClassIdentifier ClassID;
-        virtual const ClassIdentifier &getClass() const { return ClassID; }
+        VLR_DECLARE_TYPE_AWARE_CLASS_INTERFACE();
 
         static void initialize(Context &context);
         static void finalize(Context &context);
@@ -378,10 +366,10 @@ namespace VLR {
 
         bool isEmitting() const override { return true; }
 
-        bool setNodeEmittanceTextured(const EnvironmentTextureShaderNode* node);
-        bool setNodeEmittanceConstant(const ShaderNode* spectrumNode);
-        void setImmediateValueEmittance(ColorSpace colorSpace, float e0, float e1, float e2);
-        void setImmediateValueScale(float value);
+        bool setEmittanceTextured(const EnvironmentTextureShaderNode* node);
+        bool setEmittanceConstant(const ShaderNode* spectrumNode);
+        void setEmittance(ColorSpace colorSpace, float e0, float e1, float e2);
+        void setScale(float value);
 
         const RegularConstantContinuousDistribution2D &getImportanceMap();
     };

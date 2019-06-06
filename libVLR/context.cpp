@@ -9,7 +9,7 @@ namespace VLR {
         std::ifstream ifs;
         ifs.open(filepath, std::ios::in);
         if (ifs.fail()) {
-            vlrprintf("Failed to read the text file: %s", filepath.c_str());
+            vlrprintf("Failed to read the text file: %ls", filepath.c_str());
             return "";
         }
 
@@ -24,60 +24,60 @@ namespace VLR {
     Object::Object(Context &context) : m_context(context) {
     }
 
-#define defineClassID(BaseType, Type) const ClassIdentifier Type::ClassID = ClassIdentifier(&BaseType::ClassID)
+#define VLR_DEFINE_CLASS_ID(BaseType, Type) const ClassIdentifier Type::ClassID = ClassIdentifier(&BaseType::ClassID)
 
     const ClassIdentifier TypeAwareClass::ClassID = ClassIdentifier((ClassIdentifier*)nullptr);
 
-    defineClassID(TypeAwareClass, Object);
+    VLR_DEFINE_CLASS_ID(TypeAwareClass, Object);
 
-    defineClassID(Object, Image2D);
-    defineClassID(Image2D, LinearImage2D);
-    defineClassID(Image2D, BlockCompressedImage2D);
+    VLR_DEFINE_CLASS_ID(Object, Image2D);
+    VLR_DEFINE_CLASS_ID(Image2D, LinearImage2D);
+    VLR_DEFINE_CLASS_ID(Image2D, BlockCompressedImage2D);
 
-    defineClassID(Object, ShaderNode);
-    defineClassID(ShaderNode, GeometryShaderNode);
-    defineClassID(ShaderNode, Float2ShaderNode);
-    defineClassID(ShaderNode, Float3ShaderNode);
-    defineClassID(ShaderNode, Float4ShaderNode);
-    defineClassID(ShaderNode, ScaleAndOffsetFloatShaderNode);
-    defineClassID(ShaderNode, TripletSpectrumShaderNode);
-    defineClassID(ShaderNode, RegularSampledSpectrumShaderNode);
-    defineClassID(ShaderNode, IrregularSampledSpectrumShaderNode);
-    defineClassID(ShaderNode, Float3ToSpectrumShaderNode);
-    defineClassID(ShaderNode, ScaleAndOffsetUVTextureMap2DShaderNode);
-    defineClassID(ShaderNode, Image2DTextureShaderNode);
-    defineClassID(ShaderNode, EnvironmentTextureShaderNode);
+    VLR_DEFINE_CLASS_ID(Object, ShaderNode);
+    VLR_DEFINE_CLASS_ID(ShaderNode, GeometryShaderNode);
+    VLR_DEFINE_CLASS_ID(ShaderNode, Float2ShaderNode);
+    VLR_DEFINE_CLASS_ID(ShaderNode, Float3ShaderNode);
+    VLR_DEFINE_CLASS_ID(ShaderNode, Float4ShaderNode);
+    VLR_DEFINE_CLASS_ID(ShaderNode, ScaleAndOffsetFloatShaderNode);
+    VLR_DEFINE_CLASS_ID(ShaderNode, TripletSpectrumShaderNode);
+    VLR_DEFINE_CLASS_ID(ShaderNode, RegularSampledSpectrumShaderNode);
+    VLR_DEFINE_CLASS_ID(ShaderNode, IrregularSampledSpectrumShaderNode);
+    VLR_DEFINE_CLASS_ID(ShaderNode, Float3ToSpectrumShaderNode);
+    VLR_DEFINE_CLASS_ID(ShaderNode, ScaleAndOffsetUVTextureMap2DShaderNode);
+    VLR_DEFINE_CLASS_ID(ShaderNode, Image2DTextureShaderNode);
+    VLR_DEFINE_CLASS_ID(ShaderNode, EnvironmentTextureShaderNode);
 
-    defineClassID(Object, SurfaceMaterial);
-    defineClassID(SurfaceMaterial, MatteSurfaceMaterial);
-    defineClassID(SurfaceMaterial, SpecularReflectionSurfaceMaterial);
-    defineClassID(SurfaceMaterial, SpecularScatteringSurfaceMaterial);
-    defineClassID(SurfaceMaterial, MicrofacetReflectionSurfaceMaterial);
-    defineClassID(SurfaceMaterial, MicrofacetScatteringSurfaceMaterial);
-    defineClassID(SurfaceMaterial, LambertianScatteringSurfaceMaterial);
-    defineClassID(SurfaceMaterial, UE4SurfaceMaterial);
-    defineClassID(SurfaceMaterial, OldStyleSurfaceMaterial);
-    defineClassID(SurfaceMaterial, DiffuseEmitterSurfaceMaterial);
-    defineClassID(SurfaceMaterial, MultiSurfaceMaterial);
-    defineClassID(SurfaceMaterial, EnvironmentEmitterSurfaceMaterial);
+    VLR_DEFINE_CLASS_ID(Object, SurfaceMaterial);
+    VLR_DEFINE_CLASS_ID(SurfaceMaterial, MatteSurfaceMaterial);
+    VLR_DEFINE_CLASS_ID(SurfaceMaterial, SpecularReflectionSurfaceMaterial);
+    VLR_DEFINE_CLASS_ID(SurfaceMaterial, SpecularScatteringSurfaceMaterial);
+    VLR_DEFINE_CLASS_ID(SurfaceMaterial, MicrofacetReflectionSurfaceMaterial);
+    VLR_DEFINE_CLASS_ID(SurfaceMaterial, MicrofacetScatteringSurfaceMaterial);
+    VLR_DEFINE_CLASS_ID(SurfaceMaterial, LambertianScatteringSurfaceMaterial);
+    VLR_DEFINE_CLASS_ID(SurfaceMaterial, UE4SurfaceMaterial);
+    VLR_DEFINE_CLASS_ID(SurfaceMaterial, OldStyleSurfaceMaterial);
+    VLR_DEFINE_CLASS_ID(SurfaceMaterial, DiffuseEmitterSurfaceMaterial);
+    VLR_DEFINE_CLASS_ID(SurfaceMaterial, MultiSurfaceMaterial);
+    VLR_DEFINE_CLASS_ID(SurfaceMaterial, EnvironmentEmitterSurfaceMaterial);
 
-    defineClassID(Object, Transform);
-    defineClassID(Transform, StaticTransform);
+    VLR_DEFINE_CLASS_ID(Object, Transform);
+    VLR_DEFINE_CLASS_ID(Transform, StaticTransform);
 
-    defineClassID(Object, Node);
-    defineClassID(Node, SurfaceNode);
-    defineClassID(SurfaceNode, TriangleMeshSurfaceNode);
-    defineClassID(SurfaceNode, InfiniteSphereSurfaceNode);
-    defineClassID(Node, ParentNode);
-    defineClassID(ParentNode, InternalNode);
-    defineClassID(ParentNode, RootNode);
-    defineClassID(Object, Scene);
+    VLR_DEFINE_CLASS_ID(Object, Node);
+    VLR_DEFINE_CLASS_ID(Node, SurfaceNode);
+    VLR_DEFINE_CLASS_ID(SurfaceNode, TriangleMeshSurfaceNode);
+    VLR_DEFINE_CLASS_ID(SurfaceNode, InfiniteSphereSurfaceNode);
+    VLR_DEFINE_CLASS_ID(Node, ParentNode);
+    VLR_DEFINE_CLASS_ID(ParentNode, InternalNode);
+    VLR_DEFINE_CLASS_ID(ParentNode, RootNode);
+    VLR_DEFINE_CLASS_ID(Object, Scene);
 
-    defineClassID(Object, Camera);
-    defineClassID(Camera, PerspectiveCamera);
-    defineClassID(Camera, EquirectangularCamera);
+    VLR_DEFINE_CLASS_ID(Object, Camera);
+    VLR_DEFINE_CLASS_ID(Camera, PerspectiveCamera);
+    VLR_DEFINE_CLASS_ID(Camera, EquirectangularCamera);
 
-#undef defineClassID
+#undef VLR_DEFINE_CLASS_ID
 
 
 
@@ -105,24 +105,26 @@ namespace VLR {
         // JP: 使用するすべてのGPUがRTXをサポートしている(= Maxwell世代以降のGPU)か調べる。
         // EN: check if all the GPUs to use support RTX (i.e. Maxwell or later generation GPU).
         bool satisfyRequirements = true;
-        const int32_t* deviceIndices = devices;
         if (devices == nullptr || numDevices == 0) {
-            rtDeviceGetDeviceCount(&numDevices);
-            auto _devices = new int32_t[numDevices];
-            for (int i = 0; i < numDevices; ++i)
-                _devices[i] = i;
-            deviceIndices = _devices;
+            rtDeviceGetDeviceCount(&m_numDevices);
+            m_devices = new int32_t[m_numDevices];
+            for (int i = 0; i < m_numDevices; ++i)
+                m_devices[i] = i;
         }
-        for (int i = 0; i < numDevices; ++i) {
+        else {
+            m_numDevices = numDevices;
+            m_devices = new int32_t[m_numDevices];
+            std::copy_n(devices, m_numDevices, m_devices);
+        }
+        for (int i = 0; i < m_numDevices; ++i) {
             int32_t computeCapability[2];
-            checkError(rtDeviceGetAttribute(deviceIndices[i], RT_DEVICE_ATTRIBUTE_COMPUTE_CAPABILITY, sizeof(computeCapability), computeCapability));
+            checkError(rtDeviceGetAttribute(m_devices[i], RT_DEVICE_ATTRIBUTE_COMPUTE_CAPABILITY, sizeof(computeCapability), computeCapability));
             satisfyRequirements &= computeCapability[0] >= 5;
             if (!satisfyRequirements)
                 break;
         }
-        if (devices == nullptr || numDevices == 0)
-            delete[] deviceIndices;
         if (!satisfyRequirements) {
+            delete[] m_devices;
             vlrprintf("Selected devices don't satisfy compute capability 5.0.\n");
             checkError(RT_ERROR_INVALID_CONTEXT);
             return;
@@ -142,6 +144,7 @@ namespace VLR {
         m_ID = getInstanceID();
 
         m_optixContext = optix::Context::create();
+        m_optixContext->setDevices(m_devices, m_devices + m_numDevices);
 
         m_optixContext->setEntryPointCount(EntryPoint::NumEntryPoints);
         m_optixContext->setRayTypeCount(Shared::RayType::NumTypes);
@@ -167,6 +170,7 @@ namespace VLR {
             std::string ptx = readTxtFile(exeDir / "ptxes/debug_rendering.ptx");
 
             m_optixProgramDebugRenderingClosestHit = m_optixContext->createProgramFromPTXString(ptx, "VLR::debugRenderingClosestHit");
+            m_optixProgramDebugRenderingAnyHitWithAlpha = m_optixContext->createProgramFromPTXString(ptx, "VLR::debugRenderingAnyHitWithAlpha");
             m_optixProgramDebugRenderingMiss = m_optixContext->createProgramFromPTXString(ptx, "VLR::debugRenderingMiss");
             m_optixProgramDebugRenderingRayGeneration = m_optixContext->createProgramFromPTXString(ptx, "VLR::debugRenderingRayGeneration");
             m_optixProgramDebugRenderingException = m_optixContext->createProgramFromPTXString(ptx, "VLR::debugRenderingException");
@@ -257,6 +261,7 @@ namespace VLR {
         m_optixMaterialWithAlpha->setAnyHitProgram(Shared::RayType::Primary, m_optixProgramAnyHitWithAlpha);
         m_optixMaterialWithAlpha->setAnyHitProgram(Shared::RayType::Scattered, m_optixProgramAnyHitWithAlpha);
         m_optixMaterialWithAlpha->setAnyHitProgram(Shared::RayType::Shadow, m_optixProgramShadowAnyHitWithAlpha);
+        m_optixMaterialWithAlpha->setAnyHitProgram(Shared::RayType::DebugPrimary, m_optixProgramDebugRenderingAnyHitWithAlpha);
 
 
 
@@ -369,7 +374,7 @@ namespace VLR {
                 vlrprintf("Specified stack size is ignored in RTX mode.\n");
         }
         else {
-            vlrprintf("Default Stack Size: %u\n", defaultStackSize);
+            vlrprintf("Default Stack Size: %llu\n", defaultStackSize);
 
             vlrprintf("Requested Stack Size: %u\n", stackSize);
         }
@@ -402,7 +407,7 @@ namespace VLR {
 
             m_optixContext->setStackSize(stackSize);
             RTsize actuallyUsedStackSize = m_optixContext->getStackSize();
-            vlrprintf("Stack Size: %u\n", actuallyUsedStackSize);
+            vlrprintf("Stack Size: %llu\n", actuallyUsedStackSize);
         }
     }
 
@@ -470,6 +475,7 @@ namespace VLR {
         m_optixProgramDebugRenderingException->destroy();
         m_optixProgramDebugRenderingRayGeneration->destroy();
         m_optixProgramDebugRenderingMiss->destroy();
+        m_optixProgramDebugRenderingAnyHitWithAlpha->destroy();
         m_optixProgramDebugRenderingClosestHit->destroy();
 
         m_optixProgramException->destroy();
@@ -484,6 +490,8 @@ namespace VLR {
         m_optixContext->destroy();
 
         finalizeColorSystem();
+
+        delete[] m_devices;
     }
 
     void Context::bindOutputBuffer(uint32_t width, uint32_t height, uint32_t glBufferID, uint32_t glBufferDenoiseID) {
@@ -600,11 +608,11 @@ namespace VLR {
 		commandListWithDenoiser->finalize();
     }
 
-    void* Context::mapOutputBuffer() {
+    const void* Context::mapOutputBuffer() {
         if (!m_outputBuffer)
             return nullptr;
 
-        return m_outputBuffer->map();
+        return m_outputBuffer->map(0, RT_BUFFER_MAP_READ);
     }
 
     void Context::unmapOutputBuffer() {
@@ -627,7 +635,7 @@ namespace VLR {
         *height = m_height;
     }
 
-    void Context::render(Scene &scene, Camera* camera, uint32_t shrinkCoeff, bool firstFrame, uint32_t* numAccumFrames) {
+    void Context::render(Scene &scene, const Camera* camera, uint32_t shrinkCoeff, bool firstFrame, uint32_t* numAccumFrames) {
         optix::Context optixContext = getOptiXContext();
 
         optix::uint2 imageSize = optix::make_uint2(m_width / shrinkCoeff, m_height / shrinkCoeff);
@@ -658,7 +666,7 @@ namespace VLR {
 		commandListWithDenoiser->execute();
     }
 
-    void Context::debugRender(Scene &scene, Camera* camera, VLRDebugRenderingMode renderMode, uint32_t shrinkCoeff, bool firstFrame, uint32_t* numAccumFrames) {
+    void Context::debugRender(Scene &scene, const Camera* camera, VLRDebugRenderingMode renderMode, uint32_t shrinkCoeff, bool firstFrame, uint32_t* numAccumFrames) {
         optix::Context optixContext = getOptiXContext();
 
         optix::uint2 imageSize = optix::make_uint2(m_width / shrinkCoeff, m_height / shrinkCoeff);
@@ -684,7 +692,7 @@ namespace VLR {
         optixContext->validate();
 #endif
 
-        auto attr = Shared::DebugRenderingAttribute((Shared::DebugRenderingAttribute::Value)renderMode);
+        auto attr = Shared::DebugRenderingAttribute((Shared::DebugRenderingAttribute)renderMode);
         optixContext["VLR::pv_debugRenderingAttribute"]->setUserData(sizeof(attr), &attr);
         optixContext->launch(EntryPoint::DebugRendering, imageSize.x, imageSize.y);
 

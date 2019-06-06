@@ -2,6 +2,7 @@
 
 namespace VLR {
     struct DebugRenderingPayload {
+        KernelRNG rng;
         WavelengthSamples wls;
         SampledSpectrum value;
     };
@@ -20,10 +21,10 @@ namespace VLR {
 
 
     // for debug rendering
-    RT_FUNCTION TripletSpectrum DebugRenderingAttributeToSpectrum(const SurfacePoint &surfPt, DebugRenderingAttribute attribute) {
+    RT_FUNCTION TripletSpectrum debugRenderingAttributeToSpectrum(const SurfacePoint &surfPt, DebugRenderingAttribute attribute) {
         TripletSpectrum value;
 
-        switch ((int32_t)attribute) {
+        switch (attribute) {
         case DebugRenderingAttribute::GeometricNormal:
             value = createTripletSpectrum(SpectrumType::LightSource, ColorSpace::Rec709_D65,
                                           std::fmax(0.0f, 0.5f + 0.5f * surfPt.geometricNormal.x),
@@ -63,17 +64,18 @@ namespace VLR {
         case DebugRenderingAttribute::GeometricVsShadingNormal: {
             float sim = dot(surfPt.geometricNormal, surfPt.shadingFrame.z);
             bool opposite = sim < 0.0f;
-            sim = clamp(0.5f * std::fabs(sim), 0.0f, 1.0f);
-            //float gLength = clamp(0.5f + 100 * (surfPt.geometricNormal.length() - 1), 0.0f, 1.0f);
-            //float sLength = clamp(0.5f + 100 * (surfPt.shadingFrame.z.length() - 1), 0.0f, 1.0f);
-            value = createTripletSpectrum(SpectrumType::LightSource, ColorSpace::Rec709_D65, sim, opposite ? 0 : sim, opposite ? 0 : sim);
+            sim = std::fabs(sim);
+            const float coeff = 5.0f;
+            float sValue = 0.5f + coeff * (sim - 1);
+            sValue = clamp(sValue, 0.0f, 1.0f);
+            value = createTripletSpectrum(SpectrumType::LightSource, ColorSpace::Rec709_D65, sValue, opposite ? 0 : sValue, opposite ? 0 : sValue);
             break;
         }
         case DebugRenderingAttribute::ShadingFrameLengths:
             value = createTripletSpectrum(SpectrumType::LightSource, ColorSpace::Rec709_D65,
-                                          clamp(0.5f + 100 * (surfPt.shadingFrame.x.length() - 1), 0.0f, 1.0f),
-                                          clamp(0.5f + 100 * (surfPt.shadingFrame.y.length() - 1), 0.0f, 1.0f),
-                                          clamp(0.5f + 100 * (surfPt.shadingFrame.z.length() - 1), 0.0f, 1.0f));
+                                          clamp(0.5f + 10 * (surfPt.shadingFrame.x.length() - 1), 0.0f, 1.0f),
+                                          clamp(0.5f + 10 * (surfPt.shadingFrame.y.length() - 1), 0.0f, 1.0f),
+                                          clamp(0.5f + 10 * (surfPt.shadingFrame.z.length() - 1), 0.0f, 1.0f));
             break;
         case DebugRenderingAttribute::ShadingFrameOrthogonality:
             value = createTripletSpectrum(SpectrumType::LightSource, ColorSpace::Rec709_D65,
@@ -90,6 +92,23 @@ namespace VLR {
 
 
 
+
+    // Common Any Hit Program for All Primitive Types and Materials
+    RT_PROGRAM void debugRenderingAnyHitWithAlpha() {
+        HitPointParameter hitPointParam = a_hitPointParam;
+        SurfacePoint surfPt;
+        float hypAreaPDF;
+        pv_progDecodeHitPoint(hitPointParam, &surfPt, &hypAreaPDF);
+
+        float alpha = calcNode(pv_nodeAlpha, 1.0f, surfPt, sm_debugPayload.wls);
+
+        // Stochastic Alpha Test
+        if (sm_debugPayload.rng.getFloat0cTo1o() >= alpha)
+            rtIgnoreIntersection();
+    }
+
+
+
     // Common Closest Hit Program for All Primitive Types and Materials
     RT_PROGRAM void debugRenderingClosestHit() {
         WavelengthSamples &wls = sm_payload.wls;
@@ -97,6 +116,12 @@ namespace VLR {
         SurfacePoint surfPt;
         float hypAreaPDF;
         calcSurfacePoint(&surfPt, &hypAreaPDF);
+
+        //if (!surfPt.shadingFrame.x.allFinite() || !surfPt.shadingFrame.y.allFinite() || !surfPt.shadingFrame.z.allFinite())
+        //    vlrprintf("(%g, %g, %g), (%g, %g, %g), (%g, %g, %g)\n",
+        //              surfPt.shadingFrame.x.x, surfPt.shadingFrame.x.y, surfPt.shadingFrame.x.z,
+        //              surfPt.shadingFrame.y.x, surfPt.shadingFrame.y.y, surfPt.shadingFrame.y.z,
+        //              surfPt.shadingFrame.z.x, surfPt.shadingFrame.z.y, surfPt.shadingFrame.z.z);
 
         if (pv_debugRenderingAttribute == DebugRenderingAttribute::BaseColor) {
             const SurfaceMaterialDescriptor matDesc = pv_materialDescriptorBuffer[pv_materialIndex];
@@ -108,7 +133,7 @@ namespace VLR {
             sm_debugPayload.value = progGetBaseColor((const uint32_t*)&bsdf);
         }
         else {
-            sm_debugPayload.value = DebugRenderingAttributeToSpectrum(surfPt, pv_debugRenderingAttribute).evaluate(wls);
+            sm_debugPayload.value = debugRenderingAttributeToSpectrum(surfPt, pv_debugRenderingAttribute).evaluate(wls);
         }
     }
 
@@ -149,7 +174,7 @@ namespace VLR {
             sm_debugPayload.value = SampledSpectrum::Zero();
         }
         else {
-            sm_debugPayload.value = DebugRenderingAttributeToSpectrum(surfPt, pv_debugRenderingAttribute).evaluate(wls);
+            sm_debugPayload.value = debugRenderingAttributeToSpectrum(surfPt, pv_debugRenderingAttribute).evaluate(wls);
         }
     }
 
@@ -178,9 +203,16 @@ namespace VLR {
         optix::Ray ray = optix::make_Ray(asOptiXType(We0Result.surfPt.position), asOptiXType(rayDir), RayType::DebugPrimary, 0.0f, FLT_MAX);
 
         DebugRenderingPayload payload;
+        payload.rng = rng;
         payload.wls = wls;
         rtTrace(pv_topGroup, ray, payload);
-        pv_rngBuffer[sm_launchIndex] = rng;
+
+        pv_rngBuffer[sm_launchIndex] = payload.rng;
+
+        if (!payload.value.allFinite()) {
+            vlrprintf("Pass %u, (%u, %u): Not a finite value.\n", pv_numAccumFrames, sm_launchIndex.x, sm_launchIndex.y);
+            return;
+        }
 
         if (pv_numAccumFrames == 1)
             pv_outputBuffer[sm_launchIndex].reset();

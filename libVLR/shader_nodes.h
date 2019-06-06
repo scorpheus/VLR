@@ -21,7 +21,7 @@ namespace VLR {
         }
         // used in this file
         ShaderNodeSocket(const ShaderNode* _node, ShaderNodeSocketType _socketType, uint32_t _option) :
-            node(_node) {
+            node(_node), socketInfoAsUInt(0) {
             info.outputType = (unsigned int)_socketType;
             info.option = _option;
         }
@@ -82,8 +82,7 @@ namespace VLR {
         void updateNodeDescriptor() const;
 
     public:
-        static const ClassIdentifier ClassID;
-        virtual const ClassIdentifier &getClass() const { return ClassID; }
+        VLR_DECLARE_TYPE_AWARE_CLASS_INTERFACE();
 
         static void initialize(Context &context);
         static void finalize(Context &context);
@@ -106,8 +105,7 @@ namespace VLR {
         void setupNodeDescriptor() const;
 
     public:
-        static const ClassIdentifier ClassID;
-        virtual const ClassIdentifier &getClass() const { return ClassID; }
+        VLR_DECLARE_TYPE_AWARE_CLASS_INTERFACE();
 
         static void initialize(Context &context);
         static void finalize(Context &context);
@@ -115,11 +113,11 @@ namespace VLR {
         GeometryShaderNode(Context &context);
         ~GeometryShaderNode();
 
-        // Out Socket   | option |
-        // 0 (Point3D)  |      0 | Position
-        // 1 (Normal3D) |   0, 1 | Geometric Normal, Shading Normal
-        // 2 (Vector3D) |   0, 1 | Shading Tangent, Shading Bitangent
-        // 3 (Point3D)  |      0 | Texture Coordinates
+        // Out Socket | option |
+        // Point3D    |      0 | Position
+        // Normal3D   |   0, 1 | Geometric Normal, Shading Normal
+        // Vector3D   |   0, 1 | Shading Tangent, Shading Bitangent
+        // TexCoord   |      0 | Texture Coordinates
         ShaderNodeSocket getSocket(ShaderNodeSocketType stype, uint32_t option) const override {
             if ((stype == ShaderNodeSocketType::Point3D && option < 1) ||
                 (stype == ShaderNodeSocketType::Normal3D && option < 2) ||
@@ -148,8 +146,7 @@ namespace VLR {
         void setupNodeDescriptor() const;
 
     public:
-        static const ClassIdentifier ClassID;
-        virtual const ClassIdentifier &getClass() const { return ClassID; }
+        VLR_DECLARE_TYPE_AWARE_CLASS_INTERFACE();
 
         static void initialize(Context &context);
         static void finalize(Context &context);
@@ -170,10 +167,10 @@ namespace VLR {
             return OptiXProgramSets.at(m_context.getID()).nodeProcedureSetIndex;
         }
 
-        bool setNode0(const ShaderNodeSocket &outputSocket);
-        void setImmediateValue0(float value);
-        bool setNode1(const ShaderNodeSocket &outputSocket);
-        void setImmediateValue1(float value);
+        bool set0(const ShaderNodeSocket &outputSocket);
+        void set0(float value);
+        bool set1(const ShaderNodeSocket &outputSocket);
+        void set1(float value);
     };
 
 
@@ -191,8 +188,7 @@ namespace VLR {
         void setupNodeDescriptor() const;
 
     public:
-        static const ClassIdentifier ClassID;
-        virtual const ClassIdentifier &getClass() const { return ClassID; }
+        VLR_DECLARE_TYPE_AWARE_CLASS_INTERFACE();
 
         static void initialize(Context &context);
         static void finalize(Context &context);
@@ -215,12 +211,12 @@ namespace VLR {
             return OptiXProgramSets.at(m_context.getID()).nodeProcedureSetIndex;
         }
 
-        bool setNode0(const ShaderNodeSocket &outputSocket);
-        void setImmediateValue0(float value);
-        bool setNode1(const ShaderNodeSocket &outputSocket);
-        void setImmediateValue1(float value);
-        bool setNode2(const ShaderNodeSocket &outputSocket);
-        void setImmediateValue2(float value);
+        bool set0(const ShaderNodeSocket &outputSocket);
+        void set0(float value);
+        bool set1(const ShaderNodeSocket &outputSocket);
+        void set1(float value);
+        bool set2(const ShaderNodeSocket &outputSocket);
+        void set2(float value);
     };
 
 
@@ -240,8 +236,7 @@ namespace VLR {
         void setupNodeDescriptor() const;
 
     public:
-        static const ClassIdentifier ClassID;
-        virtual const ClassIdentifier &getClass() const { return ClassID; }
+        VLR_DECLARE_TYPE_AWARE_CLASS_INTERFACE();
 
         static void initialize(Context &context);
         static void finalize(Context &context);
@@ -266,14 +261,14 @@ namespace VLR {
             return OptiXProgramSets.at(m_context.getID()).nodeProcedureSetIndex;
         }
 
-        bool setNode0(const ShaderNodeSocket &outputSocket);
-        void setImmediateValue0(float value);
-        bool setNode1(const ShaderNodeSocket &outputSocket);
-        void setImmediateValue1(float value);
-        bool setNode2(const ShaderNodeSocket &outputSocket);
-        void setImmediateValue2(float value);
-        bool setNode3(const ShaderNodeSocket &outputSocket);
-        void setImmediateValue3(float value);
+        bool set0(const ShaderNodeSocket &outputSocket);
+        void set0(float value);
+        bool set1(const ShaderNodeSocket &outputSocket);
+        void set1(float value);
+        bool set2(const ShaderNodeSocket &outputSocket);
+        void set2(float value);
+        bool set3(const ShaderNodeSocket &outputSocket);
+        void set3(float value);
     };
 
 
@@ -290,8 +285,7 @@ namespace VLR {
         void setupNodeDescriptor() const;
 
     public:
-        static const ClassIdentifier ClassID;
-        virtual const ClassIdentifier &getClass() const { return ClassID; }
+        VLR_DECLARE_TYPE_AWARE_CLASS_INTERFACE();
 
         static void initialize(Context &context);
         static void finalize(Context &context);
@@ -310,11 +304,11 @@ namespace VLR {
             return OptiXProgramSets.at(m_context.getID()).nodeProcedureSetIndex;
         }
 
-        bool setNodeValue(const ShaderNodeSocket &outputSocket);
-        bool setNodeScale(const ShaderNodeSocket &outputSocket);
-        bool setNodeOffset(const ShaderNodeSocket &outputSocket);
-        void setImmediateValueScale(float value);
-        void setImmediateValueOffset(float value);
+        bool setValue(const ShaderNodeSocket &outputSocket);
+        bool setScale(const ShaderNodeSocket &outputSocket);
+        bool setOffset(const ShaderNodeSocket &outputSocket);
+        void setScale(float value);
+        void setOffset(float value);
     };
 
 
@@ -329,8 +323,7 @@ namespace VLR {
         void setupNodeDescriptor() const;
 
     public:
-        static const ClassIdentifier ClassID;
-        virtual const ClassIdentifier &getClass() const { return ClassID; }
+        VLR_DECLARE_TYPE_AWARE_CLASS_INTERFACE();
 
         static void initialize(Context &context);
         static void finalize(Context &context);
@@ -349,9 +342,9 @@ namespace VLR {
             return OptiXProgramSets.at(m_context.getID()).nodeProcedureSetIndex;
         }
 
-        void setImmediateValueSpectrumType(SpectrumType spectrumType);
-        void setImmediateValueColorSpace(ColorSpace colorSpace);
-        void setImmediateValueTriplet(float e0, float e1, float e2);
+        void setSpectrumType(SpectrumType spectrumType);
+        void setColorSpace(ColorSpace colorSpace);
+        void setTriplet(float e0, float e1, float e2);
     };
 
 
@@ -368,8 +361,7 @@ namespace VLR {
         void setupNodeDescriptor() const;
 
     public:
-        static const ClassIdentifier ClassID;
-        virtual const ClassIdentifier &getClass() const { return ClassID; }
+        VLR_DECLARE_TYPE_AWARE_CLASS_INTERFACE();
 
         static void initialize(Context &context);
         static void finalize(Context &context);
@@ -388,7 +380,7 @@ namespace VLR {
             return OptiXProgramSets.at(m_context.getID()).nodeProcedureSetIndex;
         }
 
-        void setImmediateValueSpectrum(SpectrumType spectrumType, float minLambda, float maxLambda, const float* values, uint32_t numSamples);
+        void setSpectrum(SpectrumType spectrumType, float minLambda, float maxLambda, const float* values, uint32_t numSamples);
     };
 
 
@@ -404,8 +396,7 @@ namespace VLR {
         void setupNodeDescriptor() const;
 
     public:
-        static const ClassIdentifier ClassID;
-        virtual const ClassIdentifier &getClass() const { return ClassID; }
+        VLR_DECLARE_TYPE_AWARE_CLASS_INTERFACE();
 
         static void initialize(Context &context);
         static void finalize(Context &context);
@@ -424,7 +415,7 @@ namespace VLR {
             return OptiXProgramSets.at(m_context.getID()).nodeProcedureSetIndex;
         }
 
-        void setImmediateValueSpectrum(SpectrumType spectrumType, const float* lambdas, const float* values, uint32_t numSamples);
+        void setSpectrum(SpectrumType spectrumType, const float* lambdas, const float* values, uint32_t numSamples);
     };
 
 
@@ -440,8 +431,7 @@ namespace VLR {
         void setupNodeDescriptor() const;
 
     public:
-        static const ClassIdentifier ClassID;
-        virtual const ClassIdentifier &getClass() const { return ClassID; }
+        VLR_DECLARE_TYPE_AWARE_CLASS_INTERFACE();
 
         static void initialize(Context &context);
         static void finalize(Context &context);
@@ -460,9 +450,9 @@ namespace VLR {
             return OptiXProgramSets.at(m_context.getID()).nodeProcedureSetIndex;
         }
 
-        bool setNodeFloat3(const ShaderNodeSocket &outputSocket);
-        void setImmediateValueFloat3(const float value[3]);
-        void setImmediateValueSpectrumTypeAndColorSpace(SpectrumType spectrumType, ColorSpace colorSpace);
+        bool setFloat3(const ShaderNodeSocket &outputSocket);
+        void setFloat3(const float value[3]);
+        void setSpectrumTypeAndColorSpace(SpectrumType spectrumType, ColorSpace colorSpace);
     };
 
 
@@ -476,8 +466,7 @@ namespace VLR {
         void setupNodeDescriptor() const;
 
     public:
-        static const ClassIdentifier ClassID;
-        virtual const ClassIdentifier &getClass() const { return ClassID; }
+        VLR_DECLARE_TYPE_AWARE_CLASS_INTERFACE();
 
         static void initialize(Context &context);
         static void finalize(Context &context);
@@ -486,7 +475,7 @@ namespace VLR {
         ~ScaleAndOffsetUVTextureMap2DShaderNode();
 
         // Out Socket  | option |
-        // TexCoord    |      0 | TexCoord
+        // TexCoord    |      0 | Texture Coordinates
         ShaderNodeSocket getSocket(ShaderNodeSocketType stype, uint32_t option) const override {
             if (stype == ShaderNodeSocketType::TextureCoordinates && option < 1)
                 return ShaderNodeSocket(this, stype, option);
@@ -507,13 +496,13 @@ namespace VLR {
 
         optix::TextureSampler m_optixTextureSampler;
         const Image2D* m_image;
+        BumpType m_bumpType;
         ShaderNodeSocket m_nodeTexCoord;
 
         void setupNodeDescriptor() const;
 
     public:
-        static const ClassIdentifier ClassID;
-        virtual const ClassIdentifier &getClass() const { return ClassID; }
+        VLR_DECLARE_TYPE_AWARE_CLASS_INTERFACE();
 
         static void initialize(Context &context);
         static void finalize(Context &context);
@@ -521,8 +510,16 @@ namespace VLR {
         Image2DTextureShaderNode(Context &context);
         ~Image2DTextureShaderNode();
 
+        // Out Socket | option |
+        // float      |    0-3 | s0, s1, s2, s3
+        // float2     |    0-2 | (s0, s1), (s1, s2), (s2, s3)
+        // float3     |    0-1 | (s0, s1, s2), (s1, s2, s3)
+        // float4     |      0 | (s0, s1, s2, s3)
+        // Normal3D   |    0-3 | DX Normal Map, GL Normal Map, Height Map, option 2, 3 are supported only with height map.
+        // Spectrum   |      0 | Spectrum
+        // Alpha      |    0-3 | s0, s1, s2, s3
         ShaderNodeSocket getSocket(ShaderNodeSocketType stype, uint32_t option) const override {
-            uint32_t cIndex = getComponentStartIndex(m_image->getDataFormat(), stype, option);
+            uint32_t cIndex = getComponentStartIndex(m_image->getDataFormat(), m_bumpType, stype, option);
             if (cIndex != 0xFFFFFFFF)
                 return ShaderNodeSocket(this, stype, cIndex);
             return ShaderNodeSocket();
@@ -532,9 +529,10 @@ namespace VLR {
         }
 
         void setImage(const Image2D* image);
-        void setTextureFilterMode(VLRTextureFilter minification, VLRTextureFilter magnification, VLRTextureFilter mipmapping);
+        void setBumpType(BumpType bumpType);
+        void setTextureFilterMode(VLRTextureFilter minification, VLRTextureFilter magnification);
         void setTextureWrapMode(VLRTextureWrapMode x, VLRTextureWrapMode y);
-        bool setNodeTexCoord(const ShaderNodeSocket &outputSocket);
+        bool setTexCoord(const ShaderNodeSocket &outputSocket);
     };
 
 
@@ -550,8 +548,7 @@ namespace VLR {
         void setupNodeDescriptor() const;
 
     public:
-        static const ClassIdentifier ClassID;
-        virtual const ClassIdentifier &getClass() const { return ClassID; }
+        VLR_DECLARE_TYPE_AWARE_CLASS_INTERFACE();
 
         static void initialize(Context &context);
         static void finalize(Context &context);
@@ -573,7 +570,7 @@ namespace VLR {
         void setImage(const Image2D* image);
         void setTextureFilterMode(VLRTextureFilter minification, VLRTextureFilter magnification, VLRTextureFilter mipmapping);
         void setTextureWrapMode(VLRTextureWrapMode x, VLRTextureWrapMode y);
-        bool setNodeTexCoord(const ShaderNodeSocket &outputSocket);
+        bool setTexCoord(const ShaderNodeSocket &outputSocket);
 
         void createImportanceMap(RegularConstantContinuousDistribution2D* importanceMap) const;
     };

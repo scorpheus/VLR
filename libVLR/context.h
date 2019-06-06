@@ -28,6 +28,8 @@ namespace VLR {
         uint32_t m_ID;
         optix::Context m_optixContext;
         bool m_RTXEnabled;
+        int32_t* m_devices;
+        uint32_t m_numDevices;
 
         optix::Program m_optixProgramShadowAnyHitDefault; // ---- Any Hit Program
         optix::Program m_optixProgramAnyHitWithAlpha; // -------- Any Hit Program
@@ -39,6 +41,7 @@ namespace VLR {
         optix::Program m_optixProgramException; // -------------- Exception Program
 
         optix::Program m_optixProgramDebugRenderingClosestHit;
+        optix::Program m_optixProgramDebugRenderingAnyHitWithAlpha;
         optix::Program m_optixProgramDebugRenderingMiss;
         optix::Program m_optixProgramDebugRenderingRayGeneration;
         optix::Program m_optixProgramDebugRenderingException;
@@ -125,16 +128,24 @@ namespace VLR {
         bool RTXEnabled() const {
             return m_RTXEnabled;
         }
+        uint32_t getNumDevices() const {
+            return m_numDevices;
+        }
+        int32_t getDeviceIndexAt(uint32_t idx) const {
+            if (idx >= m_numDevices)
+                return 0xFFFFFFFF;
+            return m_devices[idx];
+        }
 
         void bindOutputBuffer(uint32_t width, uint32_t height, uint32_t glBufferID, uint32_t glBufferDenoiseID);
-        void* mapOutputBuffer();
+        const void* mapOutputBuffer();
         void unmapOutputBuffer();
 		void *mapOutputBufferDenoise();
 		void unmapOutputBufferDenoise();
         void getOutputBufferSize(uint32_t* width, uint32_t* height);
 
-        void render(Scene &scene, Camera* camera, uint32_t shrinkCoeff, bool firstFrame, uint32_t* numAccumFrames);
-        void debugRender(Scene &scene, Camera* camera, VLRDebugRenderingMode renderMode, uint32_t shrinkCoeff, bool firstFrame, uint32_t* numAccumFrames);
+        void render(Scene &scene, const Camera* camera, uint32_t shrinkCoeff, bool firstFrame, uint32_t* numAccumFrames);
+        void debugRender(Scene &scene, const Camera* camera, VLRDebugRenderingMode renderMode, uint32_t shrinkCoeff, bool firstFrame, uint32_t* numAccumFrames);
 
         const optix::Context &getOptiXContext() const {
             return m_optixContext;
@@ -202,10 +213,13 @@ namespace VLR {
 
 
 
+#define VLR_DECLARE_TYPE_AWARE_CLASS_INTERFACE() \
+    static const ClassIdentifier ClassID; \
+    virtual const ClassIdentifier &getClass() const { return ClassID; }
+
     class TypeAwareClass {
     public:
-        static const ClassIdentifier ClassID;
-        virtual const ClassIdentifier &getClass() const { return ClassID; }
+        VLR_DECLARE_TYPE_AWARE_CLASS_INTERFACE();
 
         template <class T>
         bool is() const {
@@ -231,8 +245,7 @@ namespace VLR {
         Context &m_context;
 
     public:
-        static const ClassIdentifier ClassID;
-        virtual const ClassIdentifier &getClass() const { return ClassID; }
+        VLR_DECLARE_TYPE_AWARE_CLASS_INTERFACE();
 
         Object(Context &context);
         virtual ~Object() {}

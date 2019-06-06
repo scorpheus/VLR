@@ -156,6 +156,14 @@ namespace VLR {
 
 
 
+    enum class BumpType {
+        NormalMap_DirectX = 0,
+        NormalMap_OpenGL,
+        HeightMap
+    };
+
+
+
     enum class ShaderNodeSocketType {
         float1 = 0,
         float2,
@@ -588,41 +596,30 @@ namespace VLR {
             RT_FUNCTION constexpr RayType(Value v = Primary) : value(v) {}
         };
 
-        struct DebugRenderingAttribute {
-            enum Value {
-                BaseColor = 0,
-                GeometricNormal,
-                ShadingTangent,
-                ShadingBitangent,
-                ShadingNormal,
-                TC0Direction,
-                TextureCoordinates,
-                GeometricVsShadingNormal,
-                ShadingFrameLengths,
-                ShadingFrameOrthogonality,
-            } value;
 
-            RT_FUNCTION constexpr DebugRenderingAttribute(Value v = BaseColor) : value(v) {}
 
-            RT_FUNCTION operator int32_t() const {
-                return value;
-            }
+        enum class DebugRenderingAttribute {
+            BaseColor = 0,
+            GeometricNormal,
+            ShadingTangent,
+            ShadingBitangent,
+            ShadingNormal,
+            TC0Direction,
+            TextureCoordinates,
+            GeometricVsShadingNormal,
+            ShadingFrameLengths,
+            ShadingFrameOrthogonality,
+            NumAttributes
         };
 
 
 
-        struct TangentType {
-            enum Value {
-                TC0Direction = 0,
-                RadialX,
-                RadialY,
-                RadialZ
-            } value;
-
-            RT_FUNCTION constexpr TangentType(Value v = TC0Direction) : value(v) {}
-            RT_FUNCTION bool operator==(const TangentType &r) const {
-                return value == r.value;
-            }
+        enum class TangentType {
+            TC0Direction = 0,
+            RadialX,
+            RadialY,
+            RadialZ,
+            NumTypes
         };
 
 
@@ -723,12 +720,14 @@ namespace VLR {
                 unsigned int dataFormat : 5;
                 unsigned int spectrumType : 3;
                 unsigned int colorSpace : 3;
+                unsigned int bumpType : 2;
             };
             ShaderNodeSocket nodeTexCoord;
 
             RT_FUNCTION DataFormat getDataFormat() const { return DataFormat(dataFormat); }
             RT_FUNCTION SpectrumType getSpectrumType() const { return SpectrumType(spectrumType); }
             RT_FUNCTION ColorSpace getColorSpace() const { return ColorSpace(colorSpace); }
+            RT_FUNCTION BumpType getBumpType() const { return BumpType(bumpType); }
         };
         static_assert(sizeof(Image2DTextureShaderNode) == 12, "Unexpected sizeof(Image2DTextureShaderNode).");
 

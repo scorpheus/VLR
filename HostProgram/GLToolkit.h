@@ -234,10 +234,6 @@ namespace GLTK {
             Compressed_SignedRed_RGTC1 = GL_COMPRESSED_SIGNED_RED_RGTC1,
             Compressed_RG_RGTC2 = GL_COMPRESSED_RG_RGTC2,
             Compressed_SignedRG_RGTC2 = GL_COMPRESSED_SIGNED_RG_RGTC2,
-            Compressed_RGBA_BPTC_UNorm = GL_COMPRESSED_RGBA_BPTC_UNORM,
-            Compressed_sRGB_alpha_BPTC_UNorm = GL_COMPRESSED_SRGB_ALPHA_BPTC_UNORM,
-            Compressed_RGB_BPTC_SignedFloat = GL_COMPRESSED_RGB_BPTC_SIGNED_FLOAT,
-            Compressed_RGB_BPTC_UnsignedFloat = GL_COMPRESSED_RGB_BPTC_UNSIGNED_FLOAT,
         };
         Value value;
 
@@ -324,7 +320,6 @@ namespace GLTK {
             ElementArrayBuffer = GL_ELEMENT_ARRAY_BUFFER,
             PixelPackBuffer = GL_PIXEL_PACK_BUFFER,
             PixelUnpackBuffer = GL_PIXEL_UNPACK_BUFFER,
-            QueryBuffer = GL_QUERY_BUFFER,
             ShaderStorageBuffer = GL_SHADER_STORAGE_BUFFER,
             TextureBuffer = GL_TEXTURE_BUFFER,
             TransformFeedbackBuffer = GL_TRANSFORM_FEEDBACK_BUFFER,
@@ -352,7 +347,7 @@ namespace GLTK {
         Usage m_usage;
 
     public:
-        Buffer() : m_handle(0) {}
+        Buffer() : m_handle(0), m_stride(0), m_numElements(0) {}
         ~Buffer() {
             if (m_handle)
                 finalize();
@@ -479,7 +474,7 @@ namespace GLTK {
         uint32_t m_height;
 
     public:
-        Texture2D() : m_handle(0) {}
+        Texture2D() : m_handle(0), m_width(0), m_height(0) {}
         ~Texture2D() {
             if (m_handle)
                 finalize();
@@ -540,7 +535,6 @@ namespace GLTK {
             ClampToEdge = GL_CLAMP_TO_EDGE,
             ClampToBorder = GL_CLAMP_TO_BORDER,
             MirroredRepeat = GL_MIRRORED_REPEAT,
-            MirrorClampToEdge = GL_MIRROR_CLAMP_TO_EDGE,
         };
 
     private:
@@ -642,7 +636,7 @@ namespace GLTK {
         Target m_curTarget;
 
     public:
-        FrameBuffer() : m_handle(0) {}
+        FrameBuffer() : m_handle(0), m_depthRenderTargetHandle(0), m_width(0), m_height(0) {}
         ~FrameBuffer() {
             if (m_handle)
                 finalize();
@@ -768,7 +762,7 @@ namespace GLTK {
             }
         }
     public:
-        GraphicsShader() : m_handle(0) {}
+        GraphicsShader() : m_handle(0), m_VSHandle(0), m_PSHandle(0) {}
         ~GraphicsShader() {
             if (m_handle)
                 finalize();

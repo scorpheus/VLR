@@ -5,11 +5,11 @@
 namespace VLR {
     class Transform : public TypeAwareClass {
     public:
-        static const ClassIdentifier ClassID;
-        virtual const ClassIdentifier &getClass() const { return ClassID; }
+        VLR_DECLARE_TYPE_AWARE_CLASS_INTERFACE();
 
         virtual ~Transform() {}
 
+        virtual VLRTransformType getType() const = 0;
         virtual bool isStatic() const = 0;
     };
 
@@ -20,11 +20,11 @@ namespace VLR {
         Matrix4x4 m_invMatrix;
 
     public:
-        static const ClassIdentifier ClassID;
-        virtual const ClassIdentifier &getClass() const { return ClassID; }
+        VLR_DECLARE_TYPE_AWARE_CLASS_INTERFACE();
 
         StaticTransform(const Matrix4x4 &m = Matrix4x4::Identity()) : m_matrix(m), m_invMatrix(invert(m)) {}
 
+        VLRTransformType getType() const override { return VLRTransformType_Static; }
         bool isStatic() const override { return true; }
 
         StaticTransform operator*(const Matrix4x4 &m) const { return StaticTransform(m_matrix * m); }
@@ -42,6 +42,10 @@ namespace VLR {
 
     // ----------------------------------------------------------------
     // Shallow Hierarchy
+    // JP: レンダリング時のパフォーマンスを考えるとシーン階層は浅いほうが良い。
+    //     ユーザーには任意の深いシーングラフを許可する裏で同時に浅いシーングラフを生成する。
+    // EN: Shallower scene hierarchy is preferrable for rendering performance.
+    //     Generate shallow scene graph while allowing the user build arbitrarily deep scene graph.
 
     class SHGroup;
     class SHTransform;
@@ -146,6 +150,7 @@ namespace VLR {
 
         void addGeometryInstance(const SHGeometryInstance* instance);
         void removeGeometryInstance(const SHGeometryInstance* instance);
+        void updateGeometryInstance(const SHGeometryInstance* instance);
         const SHGeometryInstance* getGeometryInstanceAt(uint32_t index) const {
             auto it = m_instances.cbegin();
             std::advance(it, index);
@@ -199,8 +204,7 @@ namespace VLR {
         std::string m_name;
 
     public:
-        static const ClassIdentifier ClassID;
-        virtual const ClassIdentifier &getClass() const { return ClassID; }
+        VLR_DECLARE_TYPE_AWARE_CLASS_INTERFACE();
 
         Node(Context &context, const std::string &name) :
             Object(context), m_name(name) {}
@@ -223,8 +227,7 @@ namespace VLR {
         std::set<ParentNode*> m_parents;
 
     public:
-        static const ClassIdentifier ClassID;
-        virtual const ClassIdentifier &getClass() const { return ClassID; }
+        VLR_DECLARE_TYPE_AWARE_CLASS_INTERFACE();
 
         static void initialize(Context &context);
         static void finalize(Context &context);
@@ -267,8 +270,7 @@ namespace VLR {
         std::vector<SHGeometryInstance*> m_shGeometryInstances;
 
     public:
-        static const ClassIdentifier ClassID;
-        virtual const ClassIdentifier &getClass() const { return ClassID; }
+        VLR_DECLARE_TYPE_AWARE_CLASS_INTERFACE();
 
         static void initialize(Context &context);
         static void finalize(Context &context);
@@ -306,8 +308,7 @@ namespace VLR {
         SHGeometryInstance* m_shGeometryInstance;
 
     public:
-        static const ClassIdentifier ClassID;
-        virtual const ClassIdentifier &getClass() const { return ClassID; }
+        VLR_DECLARE_TYPE_AWARE_CLASS_INTERFACE();
 
         static void initialize(Context &context);
         static void finalize(Context &context);
@@ -324,24 +325,54 @@ namespace VLR {
     struct TransformAndGeometryInstance {
         const SHTransform* transform;
         const SHGeometryInstance* geomInstance;
+
+        bool operator<(const TransformAndGeometryInstance& v) const {
+            if (transform < v.transform) {
+                return true;
+            }
+            else if (transform == v.transform) {
+                if (geomInstance < v.geomInstance)
+                    return true;
+            }
+            return false;
+        }
     };
 
 
 
+    // JP: ParentNodeは対応するひとつのSHTransformとSHGeometryGroupを持つ。
+    //     また自分の子孫が持つ連なったSHTransformも管理する。
+    //     SHGeometryGroupにはParentNodeに「直接」所属するSurfaceNodeのジオメトリが登録される。
+    // EN: ParentNode has a single SHTransform corresponding the node itself and a single SHGeometryGroup.
+    //     And it manages chaining SHTransforms that children have.
+    //     SHGeometryGroup holds geometries of SurfaceNode's which *directly* belong to the ParentNode.
     class ParentNode : public Node {
+        void addToChildMap(Node* child);
+        void removeFromChildMap(Node* child);
+
     protected:
-        std::set<Node*> m_children;
+        uint32_t m_serialChildID;
+        std::map<Node*, uint32_t> m_childToSerialIDMap;
+        std::map<uint32_t, Node*> m_serialIDToChlidMap;
         const Transform* m_localToWorld;
 
         // key: child SHTransform
-        // SHTransform containing only the self transform uses nullptr as the key.
+        // JP: 自分自身のトランスフォームのみを含むSHTransformはnullptrをキーとする。
+        // EN: SHTransform containing only the self transform uses nullptr as the key.
         std::map<const SHTransform*, SHTransform*> m_shTransforms;
 
         SHGeometryGroup m_shGeomGroup;
 
+        void createConcatanatedTransforms(const std::set<SHTransform*>& childDelta, std::set<SHTransform*>* delta);
+        void removeConcatanatedTransforms(const std::set<SHTransform*>& childDelta, std::set<SHTransform*>* delta);
+        void updateConcatanatedTransforms(const std::set<SHTransform*>& childDelta, std::set<SHTransform*>* delta);
+
+        void addToGeometryGroup(const std::set<const SHGeometryInstance*> &childDelta);
+        void removeFromGeometryGroup(const std::set<const SHGeometryInstance*> &childDelta);
+        void updateGeometryGroup(const std::set<const SHGeometryInstance*> &childDelta);
+
     public:
-        static const ClassIdentifier ClassID;
-        virtual const ClassIdentifier &getClass() const { return ClassID; }
+        VLR_DECLARE_TYPE_AWARE_CLASS_INTERFACE();
 
         ParentNode(Context &context, const std::string &name, const Transform* localToWorld);
         virtual ~ParentNode();
@@ -351,25 +382,27 @@ namespace VLR {
             return VLRNodeType_InternalNode;
         }
 
-        enum class UpdateEvent {
-            TransformAdded = 0,
-            TransformRemoved,
-            TransformUpdated,
-            GeometryAdded,
-            GeometryRemoved,
-        };
+        virtual void transformAddEvent(const std::set<SHTransform*>& childDelta) = 0;
+        virtual void transformRemoveEvent(const std::set<SHTransform*>& childDelta) = 0;
+        virtual void transformUpdateEvent(const std::set<SHTransform*>& childDelta) = 0;
 
-        virtual void childUpdateEvent(UpdateEvent eventType, const std::set<SHTransform*> &childDelta, const std::vector<TransformAndGeometryInstance> &childGeomInstDelta) = 0;
-        virtual void childUpdateEvent(UpdateEvent eventType, const std::set<SHGeometryInstance*> &childDelta) = 0;
+        virtual void geometryAddEvent(const std::set<const SHGeometryInstance*> &childDelta) = 0;
+        virtual void geometryAddEvent(const SHTransform* childTransform, const std::set<const SHGeometryInstance*>& geomInstDelta) = 0;
+        virtual void geometryRemoveEvent(const std::set<const SHGeometryInstance*> &childDelta) = 0;
+        virtual void geometryRemoveEvent(const SHTransform* childTransform, const std::set<const SHGeometryInstance*>& geomInstDelta) = 0;
+
         virtual void setTransform(const Transform* localToWorld);
         const Transform* getTransform() const {
             return m_localToWorld;
         }
 
         void addChild(InternalNode* child);
-        void addChild(SurfaceNode* child);
         void removeChild(InternalNode* child);
+        void addChild(SurfaceNode* child);
         void removeChild(SurfaceNode* child);
+        uint32_t getNumChildren() const;
+        void getChildren(Node** children) const;
+        Node* getChildAt(uint32_t index) const;
     };
 
 
@@ -377,14 +410,19 @@ namespace VLR {
     class InternalNode : public ParentNode {
         std::set<ParentNode*> m_parents;
 
-        void childUpdateEvent(UpdateEvent eventType, const std::set<SHTransform*>& childDelta, const std::vector<TransformAndGeometryInstance> &childGeomInstDelta) override;
-        void childUpdateEvent(UpdateEvent eventType, const std::set<SHGeometryInstance*> &childDelta) override;
-
     public:
-        static const ClassIdentifier ClassID;
-        virtual const ClassIdentifier &getClass() const { return ClassID; }
+        VLR_DECLARE_TYPE_AWARE_CLASS_INTERFACE();
 
         InternalNode(Context &context, const std::string &name, const Transform* localToWorld);
+
+        void transformAddEvent(const std::set<SHTransform*>& childDelta) override;
+        void transformRemoveEvent(const std::set<SHTransform*>& childDelta) override;
+        void transformUpdateEvent(const std::set<SHTransform*>& childDelta) override;
+
+        void geometryAddEvent(const std::set<const SHGeometryInstance*>& childDelta) override;
+        void geometryAddEvent(const SHTransform* childTransform, const std::set<const SHGeometryInstance*>& geomInstDelta) override;
+        void geometryRemoveEvent(const std::set<const SHGeometryInstance*>& childDelta) override;
+        void geometryRemoveEvent(const SHTransform* childTransform, const std::set<const SHGeometryInstance*>& geomInstDelta) override;
 
         void setTransform(const Transform* localToWorld) override;
 
@@ -396,20 +434,25 @@ namespace VLR {
 
     class RootNode : public ParentNode {
         SHGroup m_shGroup;
-        std::map<const SHGeometryInstance*, Shared::SurfaceLightDescriptor> m_surfaceLights;
+        std::map<TransformAndGeometryInstance, Shared::SurfaceLightDescriptor> m_surfaceLights;
         optix::Buffer m_optixSurfaceLightDescriptorBuffer;
         DiscreteDistribution1D m_surfaceLightImpDist;
         bool m_surfaceLightsAreSetup;
 
-        void childUpdateEvent(UpdateEvent eventType, const std::set<SHTransform*>& childDelta, const std::vector<TransformAndGeometryInstance> &childGeomInstDelta) override;
-        void childUpdateEvent(UpdateEvent eventType, const std::set<SHGeometryInstance*> &childDelta) override;
-
     public:
-        static const ClassIdentifier ClassID;
-        virtual const ClassIdentifier &getClass() const { return ClassID; }
+        VLR_DECLARE_TYPE_AWARE_CLASS_INTERFACE();
 
         RootNode(Context &context, const Transform* localToWorld);
         ~RootNode();
+
+        void transformAddEvent(const std::set<SHTransform*>& childDelta) override;
+        void transformRemoveEvent(const std::set<SHTransform*>& childDelta) override;
+        void transformUpdateEvent(const std::set<SHTransform*>& childDelta) override;
+
+        void geometryAddEvent(const std::set<const SHGeometryInstance*>& childDelta) override;
+        void geometryAddEvent(const SHTransform* childTransform, const std::set<const SHGeometryInstance*>& geomInstDelta) override;
+        void geometryRemoveEvent(const std::set<const SHGeometryInstance*>& childDelta) override;
+        void geometryRemoveEvent(const SHTransform* childTransform, const std::set<const SHGeometryInstance*>& geomInstDelta) override;
 
         void set();
     };
@@ -423,8 +466,7 @@ namespace VLR {
         float m_envRotationPhi;
 
     public:
-        static const ClassIdentifier ClassID;
-        virtual const ClassIdentifier &getClass() const { return ClassID; }
+        VLR_DECLARE_TYPE_AWARE_CLASS_INTERFACE();
 
         Scene(Context &context, const Transform* localToWorld);
         ~Scene();
@@ -445,6 +487,15 @@ namespace VLR {
         void removeChild(SurfaceNode* child) {
             m_rootNode.removeChild(child);
         }
+        uint32_t getNumChildren() const {
+            return m_rootNode.getNumChildren();
+        }
+        void getChildren(Node** children) const {
+            m_rootNode.getChildren(children);
+        }
+        Node* getChildAt(uint32_t index) const {
+            return m_rootNode.getChildAt(index);
+        }
 
         // TODO: 内部実装をInfiniteSphereSurfaceNode + EnvironmentEmitterMaterialを使ったものに変えられないかを考える。
         void setEnvironment(EnvironmentEmitterSurfaceMaterial* matEnv);
@@ -457,8 +508,7 @@ namespace VLR {
 
     class Camera : public Object {
     public:
-        static const ClassIdentifier ClassID;
-        virtual const ClassIdentifier &getClass() const { return ClassID; }
+        VLR_DECLARE_TYPE_AWARE_CLASS_INTERFACE();
 
         static void initialize(Context &context);
         static void finalize(Context &context);
@@ -484,8 +534,7 @@ namespace VLR {
         Shared::PerspectiveCamera m_data;
 
     public:
-        static const ClassIdentifier ClassID;
-        virtual const ClassIdentifier &getClass() const { return ClassID; }
+        VLR_DECLARE_TYPE_AWARE_CLASS_INTERFACE();
 
         static void initialize(Context &context);
         static void finalize(Context &context);
@@ -508,6 +557,8 @@ namespace VLR {
             m_data.setImagePlaneArea();
         }
         void setSensitivity(float sensitivity) {
+            if (!std::isfinite(sensitivity))
+                sensitivity = 1.0f;
             m_data.sensitivity = std::max(0.0f, sensitivity);
         }
         void setFovY(float fovY) {
@@ -522,25 +573,25 @@ namespace VLR {
             m_data.setImagePlaneArea();
         }
 
-        void getPosition(Point3D* position) {
+        void getPosition(Point3D* position) const {
             *position = m_data.position;
         }
-        void getOrientation(Quaternion* orientation) {
+        void getOrientation(Quaternion* orientation) const {
             *orientation = m_data.orientation;
         }
-        void getAspectRatio(float* aspect) {
+        void getAspectRatio(float* aspect) const {
             *aspect = m_data.aspect;
         }
-        void getSensitivity(float* sensitivity) {
+        void getSensitivity(float* sensitivity) const {
             *sensitivity = m_data.sensitivity;
         }
-        void getFovY(float* fovY) {
+        void getFovY(float* fovY) const {
             *fovY = m_data.fovY;
         }
-        void getLensRadius(float* lensRadius) {
+        void getLensRadius(float* lensRadius) const {
             *lensRadius = m_data.lensRadius;
         }
-        void getObjectPlaneDistance(float* distance) {
+        void getObjectPlaneDistance(float* distance) const {
             *distance = m_data.objPlaneDistance;
         }
     };
@@ -558,8 +609,7 @@ namespace VLR {
         Shared::EquirectangularCamera m_data;
 
     public:
-        static const ClassIdentifier ClassID;
-        virtual const ClassIdentifier &getClass() const { return ClassID; }
+        VLR_DECLARE_TYPE_AWARE_CLASS_INTERFACE();
 
         static void initialize(Context &context);
         static void finalize(Context &context);
@@ -578,6 +628,8 @@ namespace VLR {
             m_data.orientation = orientation;
         }
         void setSensitivity(float sensitivity) {
+            if (!std::isfinite(sensitivity))
+                sensitivity = 1.0f;
             m_data.sensitivity = std::max(0.0f, sensitivity);
         }
         void setAngles(float phiAngle, float thetaAngle) {
@@ -585,16 +637,16 @@ namespace VLR {
             m_data.thetaAngle = VLR::clamp<float>(thetaAngle, 0.01f, M_PI);
         }
 
-        void getPosition(Point3D* position) {
+        void getPosition(Point3D* position) const {
             *position = m_data.position;
         }
-        void getOrientation(Quaternion* orientation) {
+        void getOrientation(Quaternion* orientation) const {
             *orientation = m_data.orientation;
         }
-        void getSensitivity(float* sensitivity) {
+        void getSensitivity(float* sensitivity) const {
             *sensitivity = m_data.sensitivity;
         }
-        void getAngles(float* phiAngle, float* thetaAngle) {
+        void getAngles(float* phiAngle, float* thetaAngle) const {
             *phiAngle = m_data.phiAngle;
             *thetaAngle = m_data.thetaAngle;
         }
