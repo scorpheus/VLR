@@ -23,6 +23,6 @@ namespace VLR {
         float RGB[3];
         transformTristimulus(mat_XYZ_to_Rec709_D65, XYZ, RGB);
         pv_RGBBuffer[sm_launchIndex] = RGBSpectrum(RGB[0], RGB[1], RGB[2]); // not clamp out of gamut color.
-		pv_RGBBuffer[sm_launchIndex].a = spectrum.a * recNumAccums;
+	//	pv_RGBBuffer[sm_launchIndex].a = spectrum.a * recNumAccums;
     }
 }

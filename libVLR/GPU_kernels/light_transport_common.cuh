@@ -137,8 +137,8 @@ namespace VLR {
         WavelengthSamples wls;
         SampledSpectrum alpha;
 		SampledSpectrum contribution;
-		SampledSpectrum normal;
-		SampledSpectrum albedo;
+		//SampledSpectrum normal;
+		//SampledSpectrum albedo;
         Point3D origin;
         Vector3D direction;
         float prevDirPDF;

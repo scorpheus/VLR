@@ -1458,7 +1458,7 @@ namespace VLR {
 	template <typename RealType>
 	RT_FUNCTION inline QuaternionTemplate<RealType> Inverse(const QuaternionTemplate<RealType> &q) {
 		const float l = Len2(q);
-		return l ? Quaternion(q.x / -l, q.y / -l, q.z / -l, q.w / l) : Quaternion(0.f, 0.f, 0.f, 1.f);
+		return l ? QuaternionTemplate<RealType>(q.x / -l, q.y / -l, q.z / -l, q.w / l) : QuaternionTemplate<RealType>(0.f, 0.f, 0.f, 1.f);
 	}
 
 

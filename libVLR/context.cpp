@@ -152,7 +152,7 @@ namespace VLR {
         const filesystem::path exeDir = getExecutableDirectory();
 
         {
-            std::string ptx = readTxtFile(exeDir / "ptxes/path_tracing.ptx");
+            std::string ptx = readTxtFile("ptxes/path_tracing.ptx");
 
             m_optixProgramShadowAnyHitDefault = m_optixContext->createProgramFromPTXString(ptx, "VLR::shadowAnyHitDefault");
             m_optixProgramAnyHitWithAlpha = m_optixContext->createProgramFromPTXString(ptx, "VLR::anyHitWithAlpha");
@@ -167,7 +167,7 @@ namespace VLR {
         m_optixContext->setExceptionProgram(EntryPoint::PathTracing, m_optixProgramException);
 
         {
-            std::string ptx = readTxtFile(exeDir / "ptxes/debug_rendering.ptx");
+            std::string ptx = readTxtFile("ptxes/debug_rendering.ptx");
 
             m_optixProgramDebugRenderingClosestHit = m_optixContext->createProgramFromPTXString(ptx, "VLR::debugRenderingClosestHit");
             m_optixProgramDebugRenderingAnyHitWithAlpha = m_optixContext->createProgramFromPTXString(ptx, "VLR::debugRenderingAnyHitWithAlpha");
@@ -179,7 +179,7 @@ namespace VLR {
         m_optixContext->setExceptionProgram(EntryPoint::DebugRendering, m_optixProgramDebugRenderingException);
 
         {
-            std::string ptx = readTxtFile(exeDir / "ptxes/convert_to_rgb.ptx");
+            std::string ptx = readTxtFile("ptxes/convert_to_rgb.ptx");
             m_optixProgramConvertToRGB = m_optixContext->createProgramFromPTXString(ptx, "VLR::convertToRGB");
         }
         m_optixContext->setRayGenerationProgram(EntryPoint::ConvertToRGB, m_optixProgramConvertToRGB);
@@ -519,9 +519,6 @@ namespace VLR {
         else {
 			m_outputBuffer = m_optixContext->createBuffer(RT_BUFFER_INPUT_OUTPUT, RT_FORMAT_FLOAT4, m_width, m_height);
 		}
-		m_outputNormalBuffer = m_optixContext->createBuffer(RT_BUFFER_INPUT_OUTPUT, RT_FORMAT_FLOAT4, m_width, m_height);
-		m_outputAlbedoBuffer = m_optixContext->createBuffer(RT_BUFFER_INPUT_OUTPUT, RT_FORMAT_FLOAT4, m_width, m_height);
-
 		//m_outputRGBBuffer->setElementSize(sizeof(RGBSpectrum));
 		m_optixContext["VLR::pv_RGBBuffer"]->set(m_outputBuffer);
 		//m_optixContext["VLR::pv_RGBBuffer"]->set(m_outputNormalBuffer);
@@ -531,10 +528,10 @@ namespace VLR {
         m_optixContext["VLR::pv_spectrumBuffer"]->set(m_rawOutputBuffer);
         m_optixContext["VLR::pv_outputBuffer"]->set(m_rawOutputBuffer);
 				
-	//	m_optixContext["VLR::pv_outputNormalBuffer"]->set(m_outputBuffer);
-		m_optixContext["VLR::pv_outputNormalBuffer"]->set(m_outputNormalBuffer);
-		m_optixContext["VLR::pv_outputAlbedoBuffer"]->set(m_outputAlbedoBuffer);
-	//	m_optixContext["VLR::pv_outputAlbedoBuffer"]->set(m_outputBuffer);
+	//	m_outputNormalBuffer = m_optixContext->createBuffer(RT_BUFFER_INPUT_OUTPUT, RT_FORMAT_FLOAT4, m_width, m_height);
+	//	m_outputAlbedoBuffer = m_optixContext->createBuffer(RT_BUFFER_INPUT_OUTPUT, RT_FORMAT_FLOAT4, m_width, m_height);
+	//	m_optixContext["VLR::pv_outputNormalBuffer"]->set(m_outputNormalBuffer);
+	//	m_optixContext["VLR::pv_outputAlbedoBuffer"]->set(m_outputAlbedoBuffer);
 
         m_rngBuffer = m_optixContext->createBuffer(RT_BUFFER_INPUT_OUTPUT, RT_FORMAT_USER, m_width, m_height);
         m_rngBuffer->setElementSize(sizeof(uint64_t));
@@ -597,14 +594,14 @@ namespace VLR {
 			m_denoiserStage->declareVariable("input_albedo_buffer");
 			m_denoiserStage->declareVariable("input_normal_buffer");
 		}
-		
+
 		if (commandListWithDenoiser) {
 			commandListWithDenoiser->destroy();
 		}
 		commandListWithDenoiser = m_optixContext->createCommandList();
-		commandListWithDenoiser->appendLaunch(EntryPoint::PathTracing, width, height);
-		commandListWithDenoiser->appendLaunch(EntryPoint::ConvertToRGB, width, height);
-		commandListWithDenoiser->appendPostprocessingStage(m_denoiserStage, width, height);
+		commandListWithDenoiser->appendLaunch(EntryPoint::PathTracing, m_width, m_height);
+		commandListWithDenoiser->appendLaunch(EntryPoint::ConvertToRGB, m_width, m_height);
+		commandListWithDenoiser->appendPostprocessingStage(m_denoiserStage, m_width, m_height);
 		commandListWithDenoiser->finalize();
     }
 

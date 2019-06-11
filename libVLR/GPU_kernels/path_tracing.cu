@@ -9,8 +9,8 @@ rtDeclareVariable(ProgSigSampleLensPosition, pv_progSampleLensPosition, , );
 rtDeclareVariable(ProgSigSampleIDF, pv_progSampleIDF, , );
 rtBuffer<KernelRNG, 2> pv_rngBuffer;
 rtBuffer<SpectrumStorage, 2> pv_outputBuffer;
-rtBuffer<RGBSpectrum, 2> pv_outputNormalBuffer;
-rtBuffer<RGBSpectrum, 2> pv_outputAlbedoBuffer;
+//rtBuffer<RGBSpectrum, 2> pv_outputNormalBuffer;
+//rtBuffer<RGBSpectrum, 2> pv_outputAlbedoBuffer;
 
 // Common Closest Hit Program for All Primitive Types and Materials
 RT_PROGRAM void pathTracingIteration() {
@@ -55,7 +55,7 @@ RT_PROGRAM void pathTracingIteration() {
 	BSDFQuery fsQuery(dirOutLocal, geomNormalLocal, DirectionType::All(), wls);
 
 	// get base color for denoiser
-	if (sm_payload.albedo.r == -1.f && sm_payload.albedo.g == -1.f && sm_payload.albedo.b == -1.f) {
+/*	if (sm_payload.albedo.r == -1.f && sm_payload.albedo.g == -1.f && sm_payload.albedo.b == -1.f) {
 		sm_payload.contribution.a = 1.f;
 
 		const BSDFProcedureSet procSet = pv_bsdfProcedureSetBuffer[matDesc.bsdfProcedureSetIndex];
@@ -69,7 +69,7 @@ RT_PROGRAM void pathTracingIteration() {
 		rotMat = invert(rotMat);
 		auto normalCam = normalize(rotMat * surfPt.geometricNormal);
 		sm_payload.normal = RGBSpectrum(-normalCam.x, normalCam.y, -normalCam.z);
-	}
+	}*/
 
 	// Next Event Estimation (explicit light sampling)
 	if (bsdf.hasNonDelta()) {
@@ -186,10 +186,10 @@ RT_PROGRAM void pathTracingMiss() {
 		sm_payload.contribution += sm_payload.alpha * Le * MISWeight;
 	}
 	// get base color for denoiser
-	if (sm_payload.albedo.r == -1.f && sm_payload.albedo.g == -1.f && sm_payload.albedo.b == -1.f) {
+/*	if (sm_payload.albedo.r == -1.f && sm_payload.albedo.g == -1.f && sm_payload.albedo.b == -1.f) {
 		sm_payload.albedo = spEmittance;
 		sm_payload.contribution.a = 0.f;
-	}
+	}*/
 }
 
 // Common Ray Generation Program for All Camera Types
@@ -221,8 +221,8 @@ RT_PROGRAM void pathTracing() {
 	payload.wls = wls;
 	payload.alpha = alpha;
 	payload.contribution = SampledSpectrum::Zero();
-	payload.normal = SampledSpectrum(0.0, 1.0, 0.0);
-	payload.albedo = SampledSpectrum(-1.f, -1.f, -1.f);
+	//payload.normal = SampledSpectrum(0.0, 1.0, 0.0);
+	//payload.albedo = SampledSpectrum(-1.f, -1.f, -1.f);
 
 	const uint32_t MaxPathLength = 25;
 	uint32_t pathLength = 0;
@@ -247,8 +247,8 @@ RT_PROGRAM void pathTracing() {
 
 	if (pv_numAccumFrames == 1) {
 		pv_outputBuffer[sm_launchIndex].reset();
-		pv_outputNormalBuffer[sm_launchIndex] = payload.normal;
-		pv_outputAlbedoBuffer[sm_launchIndex] = payload.albedo;
+	//	pv_outputNormalBuffer[sm_launchIndex] = payload.normal;
+	//	pv_outputAlbedoBuffer[sm_launchIndex] = payload.albedo;
 	}
 	pv_outputBuffer[sm_launchIndex].add(wls, payload.contribution);
 }
