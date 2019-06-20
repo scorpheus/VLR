@@ -55,7 +55,7 @@ RT_PROGRAM void pathTracingIteration() {
 	BSDFQuery fsQuery(dirOutLocal, geomNormalLocal, DirectionType::All(), wls);
 
 	// get base color for denoiser
-/*	if (sm_payload.albedo.r == -1.f && sm_payload.albedo.g == -1.f && sm_payload.albedo.b == -1.f) {
+	if (sm_payload.albedo.r == -1.f && sm_payload.albedo.g == -1.f && sm_payload.albedo.b == -1.f) {
 		sm_payload.contribution.a = 1.f;
 
 		const BSDFProcedureSet procSet = pv_bsdfProcedureSetBuffer[matDesc.bsdfProcedureSetIndex];
@@ -63,13 +63,13 @@ RT_PROGRAM void pathTracingIteration() {
 		sm_payload.albedo = progGetBaseColor((const uint32_t *)&bsdf);
 		//	sm_payload.normal = RGBSpectrum(surfPt.geometricNormal.x, surfPt.geometricNormal.y, surfPt.geometricNormal.z);
 		//	sm_payload.normal = RGBSpectrum(geomNormalLocal.x, geomNormalLocal.y, geomNormalLocal.z);
-		auto rotMat = Matrix4x4(pv_perspectiveCamera.orientation.toMatrix3x3());
+/*		auto rotMat = Matrix4x4(pv_perspectiveCamera.orientation.toMatrix3x3());
 		//rotMat = rotateY(1.57f) * rotMat;
 		rotMat = translate(pv_perspectiveCamera.position.x, pv_perspectiveCamera.position.y, pv_perspectiveCamera.position.z) * rotMat;
 		rotMat = invert(rotMat);
 		auto normalCam = normalize(rotMat * surfPt.geometricNormal);
 		sm_payload.normal = RGBSpectrum(-normalCam.x, normalCam.y, -normalCam.z);
-	}*/
+*/	}
 
 	// Next Event Estimation (explicit light sampling)
 	if (bsdf.hasNonDelta()) {
@@ -186,10 +186,10 @@ RT_PROGRAM void pathTracingMiss() {
 		sm_payload.contribution += sm_payload.alpha * Le * MISWeight;
 	}
 	// get base color for denoiser
-/*	if (sm_payload.albedo.r == -1.f && sm_payload.albedo.g == -1.f && sm_payload.albedo.b == -1.f) {
+	if (sm_payload.albedo.r == -1.f && sm_payload.albedo.g == -1.f && sm_payload.albedo.b == -1.f) {
 		sm_payload.albedo = spEmittance;
 		sm_payload.contribution.a = 0.f;
-	}*/
+	}
 }
 
 // Common Ray Generation Program for All Camera Types
@@ -222,7 +222,7 @@ RT_PROGRAM void pathTracing() {
 	payload.alpha = alpha;
 	payload.contribution = SampledSpectrum::Zero();
 	//payload.normal = SampledSpectrum(0.0, 1.0, 0.0);
-	//payload.albedo = SampledSpectrum(-1.f, -1.f, -1.f);
+	payload.albedo = SampledSpectrum(-1.f, -1.f, -1.f);
 
 	const uint32_t MaxPathLength = 25;
 	uint32_t pathLength = 0;
