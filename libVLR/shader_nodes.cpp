@@ -1,23 +1,25 @@
 ﻿#include "shader_nodes.h"
 
 namespace VLR {
-    Shared::ShaderNodeSocket ShaderNodeSocket::getSharedType() const {
+    Shared::ShaderNodePlug ShaderNodePlug::getSharedType() const {
         if (node) {
-            Shared::ShaderNodeSocket ret;
+            Shared::ShaderNodePlug ret;
             ret.nodeType = node->getProcedureSetIndex();
-            ret.socketType = info.outputType;
+            ret.plugType = info.outputType;
             ret.nodeDescIndex = node->getShaderNodeIndex();
             ret.option = info.option;
             return ret;
         }
-        return Shared::ShaderNodeSocket::Invalid();
+        return Shared::ShaderNodePlug::Invalid();
     }
 
 
 
+    std::string ShaderNode::s_shader_nodes_ptx;
+    
     // static 
-    void ShaderNode::commonInitializeProcedure(Context &context, const SocketTypeToProgramPair* pairs, uint32_t numPairs, OptiXProgramSet* programSet) {
-        std::string ptx = readTxtFile(getExecutableDirectory() / "ptxes/shader_nodes.ptx");
+    void ShaderNode::commonInitializeProcedure(Context &context, const PlugTypeToProgramPair* pairs, uint32_t numPairs, OptiXProgramSet* programSet) {
+        const std::string &ptx = s_shader_nodes_ptx;
 
         optix::Context optixContext = context.getOptiXContext();
 
@@ -25,9 +27,9 @@ namespace VLR {
         for (int i = 0; i < lengthof(nodeProcSet.progs); ++i)
             nodeProcSet.progs[i] = 0xFFFFFFFF;
         for (int i = 0; i < numPairs; ++i) {
-            uint32_t stype = (uint32_t)pairs[i].stype;
-            programSet->callablePrograms[stype] = optixContext->createProgramFromPTXString(ptx, pairs[i].programName);
-            nodeProcSet.progs[stype] = programSet->callablePrograms[stype]->getId();
+            uint32_t ptype = (uint32_t)pairs[i].ptype;
+            programSet->callablePrograms[ptype] = optixContext->createProgramFromPTXString(ptx, pairs[i].programName);
+            nodeProcSet.progs[ptype] = programSet->callablePrograms[ptype]->getId();
         }
 
         programSet->nodeProcedureSetIndex = context.allocateNodeProcedureSet();
@@ -57,7 +59,10 @@ namespace VLR {
 
     // static
     void ShaderNode::initialize(Context &context) {
+        s_shader_nodes_ptx = readTxtFile(getExecutableDirectory() / "ptxes/shader_nodes.ptx");
+
         GeometryShaderNode::initialize(context);
+        TangentShaderNode::initialize(context);
         Float2ShaderNode::initialize(context);
         Float3ShaderNode::initialize(context);
         Float4ShaderNode::initialize(context);
@@ -84,20 +89,21 @@ namespace VLR {
         Float4ShaderNode::finalize(context);
         Float3ShaderNode::finalize(context);
         Float2ShaderNode::finalize(context);
+        TangentShaderNode::finalize(context);
         GeometryShaderNode::finalize(context);
     }
 
-    ShaderNode::ShaderNode(Context &context, size_t sizeOfNode) : Object(context) {
+    ShaderNode::ShaderNode(Context &context, size_t sizeOfNode) : Queryable(context) {
         size_t sizeOfNodeInDW = sizeOfNode / 4;
-        if (sizeOfNodeInDW <= VLR_MAX_NUM_SMALL_NODE_DESCRIPTOR_SLOTS) {
+        if (sizeOfNodeInDW <= Shared::SmallNodeDescriptor::NumDWSlots()) {
             m_nodeSizeClass = 0;
             m_nodeIndex = m_context.allocateSmallNodeDescriptor();
         }
-        else if (sizeOfNodeInDW <= VLR_MAX_NUM_MEDIUM_NODE_DESCRIPTOR_SLOTS) {
+        else if (sizeOfNodeInDW <= Shared::MediumNodeDescriptor::NumDWSlots()) {
             m_nodeSizeClass = 1;
             m_nodeIndex = m_context.allocateMediumNodeDescriptor();
         }
-        else if (sizeOfNodeInDW <= VLR_MAX_NUM_LARGE_NODE_DESCRIPTOR_SLOTS) {
+        else if (sizeOfNodeInDW <= Shared::LargeNodeDescriptor::NumDWSlots()) {
             m_nodeSizeClass = 2;
             m_nodeIndex = m_context.allocateLargeNodeDescriptor();
         }
@@ -117,16 +123,18 @@ namespace VLR {
 
 
 
+    std::vector<ParameterInfo> GeometryShaderNode::ParameterInfos;
+    
     std::map<uint32_t, ShaderNode::OptiXProgramSet> GeometryShaderNode::OptiXProgramSets;
     std::map<uint32_t, GeometryShaderNode*> GeometryShaderNode::Instances;
 
     // static
     void GeometryShaderNode::initialize(Context &context) {
-        const SocketTypeToProgramPair pairs[] = {
-            ShaderNodeSocketType::Point3D, "VLR::GeometryShaderNode_Point3D",
-            ShaderNodeSocketType::Normal3D, "VLR::GeometryShaderNode_Normal3D",
-            ShaderNodeSocketType::Vector3D, "VLR::GeometryShaderNode_Vector3D",
-            ShaderNodeSocketType::TextureCoordinates, "VLR::GeometryShaderNode_TextureCoordinates",
+        const PlugTypeToProgramPair pairs[] = {
+            ShaderNodePlugType::Point3D, "VLR::GeometryShaderNode_Point3D",
+            ShaderNodePlugType::Normal3D, "VLR::GeometryShaderNode_Normal3D",
+            ShaderNodePlugType::Vector3D, "VLR::GeometryShaderNode_Vector3D",
+            ShaderNodePlugType::TextureCoordinates, "VLR::GeometryShaderNode_TextureCoordinates",
         };
         OptiXProgramSet programSet;
         commonInitializeProcedure(context, pairs, lengthof(pairs), &programSet);
@@ -142,6 +150,7 @@ namespace VLR {
 
         OptiXProgramSet &programSet = OptiXProgramSets.at(context.getID());
         commonFinalizeProcedure(context, programSet);
+        OptiXProgramSets.erase(context.getID());
     }
 
     GeometryShaderNode::GeometryShaderNode(Context &context) :
@@ -164,13 +173,104 @@ namespace VLR {
 
 
 
+    std::vector<ParameterInfo> TangentShaderNode::ParameterInfos;
+
+    std::map<uint32_t, ShaderNode::OptiXProgramSet> TangentShaderNode::OptiXProgramSets;
+
+    // static
+    void TangentShaderNode::initialize(Context& context) {
+        const ParameterInfo paramInfos[] = {
+            ParameterInfo("tangent type", VLRParameterFormFlag_ImmediateValue, EnumTangentType),
+        };
+
+        if (ParameterInfos.size() == 0) {
+            ParameterInfos.resize(lengthof(paramInfos));
+            std::copy_n(paramInfos, lengthof(paramInfos), ParameterInfos.data());
+        }
+
+        const PlugTypeToProgramPair pairs[] = {
+            ShaderNodePlugType::Vector3D, "VLR::TangentShaderNode_Vector3D",
+        };
+        OptiXProgramSet programSet;
+        commonInitializeProcedure(context, pairs, lengthof(pairs), &programSet);
+
+        OptiXProgramSets[context.getID()] = programSet;
+    }
+
+    // static
+    void TangentShaderNode::finalize(Context& context) {
+        OptiXProgramSet& programSet = OptiXProgramSets.at(context.getID());
+        commonFinalizeProcedure(context, programSet);
+        OptiXProgramSets.erase(context.getID());
+    }
+
+    TangentShaderNode::TangentShaderNode(Context& context) :
+        ShaderNode(context, sizeof(Shared::TangentShaderNode)), m_immTangentType(TangentType::TC0Direction) {
+        setupNodeDescriptor();
+    }
+
+    TangentShaderNode::~TangentShaderNode() {
+    }
+
+    void TangentShaderNode::setupNodeDescriptor() const {
+        auto& nodeData = *getData<Shared::TangentShaderNode>();
+        nodeData.tangentType = m_immTangentType;
+
+        updateNodeDescriptor();
+    }
+
+    bool TangentShaderNode::get(const char* paramName, const char** enumValue) const {
+        if (enumValue == nullptr)
+            return false;
+
+        if (testParamName(paramName, "tangent type")) {
+            *enumValue = getEnumMemberFromValue(m_immTangentType);
+            VLRAssert(*enumValue != nullptr, "Invalid enum value");
+        }
+        else {
+            return false;
+        }
+
+        return true;
+    }
+
+    bool TangentShaderNode::set(const char* paramName, const char* enumValue) {
+        if (testParamName(paramName, "tangent type")) {
+            auto v = getEnumValueFromMember<TangentType>(enumValue);
+            if (v == (TangentType)0xFFFFFFFF)
+                return false;
+
+            m_immTangentType = v;
+        }
+        else {
+            return false;
+        }
+        setupNodeDescriptor();
+
+        return true;
+    }
+
+
+
+    std::vector<ParameterInfo> Float2ShaderNode::ParameterInfos;
+    
     std::map<uint32_t, ShaderNode::OptiXProgramSet> Float2ShaderNode::OptiXProgramSets;
 
     // static
     void Float2ShaderNode::initialize(Context &context) {
-        const SocketTypeToProgramPair pairs[] = {
-            ShaderNodeSocketType::float1, "VLR::Float2ShaderNode_float1",
-            ShaderNodeSocketType::float2, "VLR::Float2ShaderNode_float2",
+        const ParameterInfo paramInfos[] = {
+            ParameterInfo("0", VLRParameterFormFlag_Both, ParameterFloat),
+            ParameterInfo("1", VLRParameterFormFlag_Both, ParameterFloat),
+        };
+
+        if (ParameterInfos.size() == 0) {
+            ParameterInfos.resize(lengthof(paramInfos));
+            std::copy_n(paramInfos, lengthof(paramInfos), ParameterInfos.data());
+        }
+
+        const PlugTypeToProgramPair pairs[] = {
+            ShaderNodePlugType::float1, "VLR::Float2ShaderNode_float1",
+            ShaderNodePlugType::float2, "VLR::Float2ShaderNode_float2",
         };
         OptiXProgramSet programSet;
         commonInitializeProcedure(context, pairs, lengthof(pairs), &programSet);
@@ -182,6 +282,7 @@ namespace VLR {
     void Float2ShaderNode::finalize(Context &context) {
         OptiXProgramSet &programSet = OptiXProgramSets.at(context.getID());
         commonFinalizeProcedure(context, programSet);
+        OptiXProgramSets.erase(context.getID());
     }
 
     Float2ShaderNode::Float2ShaderNode(Context &context) :
@@ -203,42 +304,114 @@ namespace VLR {
         updateNodeDescriptor();
     }
 
-    bool Float2ShaderNode::set0(const ShaderNodeSocket &outputSocket) {
-        if (!Shared::NodeTypeInfo<float>::ConversionIsDefinedFor(outputSocket.getType()))
+    bool Float2ShaderNode::get(const char* paramName, float* values, uint32_t length) const {
+        if (values == nullptr)
             return false;
-        m_node0 = outputSocket;
-        setupNodeDescriptor();
+
+        if (testParamName(paramName, "0")) {
+            if (length != 1)
+                return false;
+
+            values[0] = m_imm0;
+        }
+        else if (testParamName(paramName, "1")) {
+            if (length != 1)
+                return false;
+
+            values[0] = m_imm1;
+        }
+        else {
+            return false;
+        }
+
         return true;
     }
 
-    void Float2ShaderNode::set0(float value) {
-        m_imm0 = value;
-        setupNodeDescriptor();
-    }
-
-    bool Float2ShaderNode::set1(const ShaderNodeSocket &outputSocket) {
-        if (!Shared::NodeTypeInfo<float>::ConversionIsDefinedFor(outputSocket.getType()))
+    bool Float2ShaderNode::get(const char* paramName, ShaderNodePlug* plug) const {
+        if (plug == nullptr)
             return false;
-        m_node1 = outputSocket;
-        setupNodeDescriptor();
+
+        if (testParamName(paramName, "0")) {
+            *plug = m_node0;
+        }
+        else if (testParamName(paramName, "1")) {
+            *plug = m_node1;
+        }
+        else {
+            return false;
+        }
+
         return true;
     }
 
-    void Float2ShaderNode::set1(float value) {
-        m_imm1 = value;
+    bool Float2ShaderNode::set(const char* paramName, const float* values, uint32_t length) {
+        if (values == nullptr)
+            return false;
+
+        if (testParamName(paramName, "0")) {
+            if (length != 1)
+                return false;
+
+            m_imm0 = values[0];
+        }
+        else if (testParamName(paramName, "1")) {
+            if (length != 1)
+                return false;
+
+            m_imm1 = values[0];
+        }
+        else {
+            return false;
+        }
         setupNodeDescriptor();
+
+        return true;
+    }
+
+    bool Float2ShaderNode::set(const char* paramName, const ShaderNodePlug& plug) {
+        if (testParamName(paramName, "0")) {
+            if (!Shared::NodeTypeInfo<float>::ConversionIsDefinedFrom(plug.getType()))
+                return false;
+
+            m_node0 = plug;
+        }
+        else if (testParamName(paramName, "1")) {
+            if (!Shared::NodeTypeInfo<float>::ConversionIsDefinedFrom(plug.getType()))
+                return false;
+
+            m_node1 = plug;
+        }
+        else {
+            return false;
+        }
+        setupNodeDescriptor();
+
+        return true;
     }
 
 
 
+    std::vector<ParameterInfo> Float3ShaderNode::ParameterInfos;
+    
     std::map<uint32_t, ShaderNode::OptiXProgramSet> Float3ShaderNode::OptiXProgramSets;
 
     // static
     void Float3ShaderNode::initialize(Context &context) {
-        const SocketTypeToProgramPair pairs[] = {
-            ShaderNodeSocketType::float1, "VLR::Float3ShaderNode_float1",
-            ShaderNodeSocketType::float2, "VLR::Float3ShaderNode_float2",
-            ShaderNodeSocketType::float3, "VLR::Float3ShaderNode_float3",
+        const ParameterInfo paramInfos[] = {
+            ParameterInfo("0", VLRParameterFormFlag_Both, ParameterFloat),
+            ParameterInfo("1", VLRParameterFormFlag_Both, ParameterFloat),
+            ParameterInfo("2", VLRParameterFormFlag_Both, ParameterFloat),
+        };
+
+        if (ParameterInfos.size() == 0) {
+            ParameterInfos.resize(lengthof(paramInfos));
+            std::copy_n(paramInfos, lengthof(paramInfos), ParameterInfos.data());
+        }
+
+        const PlugTypeToProgramPair pairs[] = {
+            ShaderNodePlugType::float1, "VLR::Float3ShaderNode_float1",
+            ShaderNodePlugType::float2, "VLR::Float3ShaderNode_float2",
+            ShaderNodePlugType::float3, "VLR::Float3ShaderNode_float3",
         };
         OptiXProgramSet programSet;
         commonInitializeProcedure(context, pairs, lengthof(pairs), &programSet);
@@ -250,6 +423,7 @@ namespace VLR {
     void Float3ShaderNode::finalize(Context &context) {
         OptiXProgramSet &programSet = OptiXProgramSets.at(context.getID());
         commonFinalizeProcedure(context, programSet);
+        OptiXProgramSets.erase(context.getID());
     }
 
     Float3ShaderNode::Float3ShaderNode(Context &context) :
@@ -273,56 +447,137 @@ namespace VLR {
         updateNodeDescriptor();
     }
 
-    bool Float3ShaderNode::set0(const ShaderNodeSocket &outputSocket) {
-        if (!Shared::NodeTypeInfo<float>::ConversionIsDefinedFor(outputSocket.getType()))
+    bool Float3ShaderNode::get(const char* paramName, float* values, uint32_t length) const {
+        if (values == nullptr)
             return false;
-        m_node0 = outputSocket;
-        setupNodeDescriptor();
+
+        if (testParamName(paramName, "0")) {
+            if (length != 1)
+                return false;
+
+            values[0] = m_imm0;
+        }
+        else if (testParamName(paramName, "1")) {
+            if (length != 1)
+                return false;
+
+            values[0] = m_imm1;
+        }
+        else if (testParamName(paramName, "2")) {
+            if (length != 1)
+                return false;
+
+            values[0] = m_imm2;
+        }
+        else {
+            return false;
+        }
+
         return true;
     }
 
-    void Float3ShaderNode::set0(float value) {
-        m_imm0 = value;
-        setupNodeDescriptor();
-    }
-
-    bool Float3ShaderNode::set1(const ShaderNodeSocket &outputSocket) {
-        if (!Shared::NodeTypeInfo<float>::ConversionIsDefinedFor(outputSocket.getType()))
+    bool Float3ShaderNode::get(const char* paramName, ShaderNodePlug* plug) const {
+        if (plug == nullptr)
             return false;
-        m_node1 = outputSocket;
-        setupNodeDescriptor();
+
+        if (testParamName(paramName, "0")) {
+            *plug = m_node0;
+        }
+        else if (testParamName(paramName, "1")) {
+            *plug = m_node1;
+        }
+        else if (testParamName(paramName, "2")) {
+            *plug = m_node2;
+        }
+        else {
+            return false;
+        }
+
         return true;
     }
 
-    void Float3ShaderNode::set1(float value) {
-        m_imm1 = value;
-        setupNodeDescriptor();
-    }
-
-    bool Float3ShaderNode::set2(const ShaderNodeSocket &outputSocket) {
-        if (!Shared::NodeTypeInfo<float>::ConversionIsDefinedFor(outputSocket.getType()))
+    bool Float3ShaderNode::set(const char* paramName, const float* values, uint32_t length) {
+        if (values == nullptr)
             return false;
-        m_node2 = outputSocket;
+
+        if (testParamName(paramName, "0")) {
+            if (length != 1)
+                return false;
+
+            m_imm0 = values[0];
+        }
+        else if (testParamName(paramName, "1")) {
+            if (length != 1)
+                return false;
+
+            m_imm1 = values[0];
+        }
+        else if (testParamName(paramName, "2")) {
+            if (length != 1)
+                return false;
+
+            m_imm2 = values[0];
+        }
+        else {
+            return false;
+        }
         setupNodeDescriptor();
+
         return true;
     }
 
-    void Float3ShaderNode::set2(float value) {
-        m_imm2 = value;
+    bool Float3ShaderNode::set(const char* paramName, const ShaderNodePlug& plug) {
+        if (testParamName(paramName, "0")) {
+            if (!Shared::NodeTypeInfo<float>::ConversionIsDefinedFrom(plug.getType()))
+                return false;
+
+            m_node0 = plug;
+        }
+        else if (testParamName(paramName, "1")) {
+            if (!Shared::NodeTypeInfo<float>::ConversionIsDefinedFrom(plug.getType()))
+                return false;
+
+            m_node1 = plug;
+        }
+        else if (testParamName(paramName, "2")) {
+            if (!Shared::NodeTypeInfo<float>::ConversionIsDefinedFrom(plug.getType()))
+                return false;
+
+            m_node2 = plug;
+        }
+        else {
+            return false;
+        }
         setupNodeDescriptor();
+
+        return true;
     }
 
 
 
+    std::vector<ParameterInfo> Float4ShaderNode::ParameterInfos;
+    
     std::map<uint32_t, ShaderNode::OptiXProgramSet> Float4ShaderNode::OptiXProgramSets;
 
     // static
     void Float4ShaderNode::initialize(Context &context) {
-        const SocketTypeToProgramPair pairs[] = {
-            ShaderNodeSocketType::float1, "VLR::Float4ShaderNode_float1",
-            ShaderNodeSocketType::float2, "VLR::Float4ShaderNode_float2",
-            ShaderNodeSocketType::float3, "VLR::Float4ShaderNode_float3",
-            ShaderNodeSocketType::float4, "VLR::Float4ShaderNode_float4",
+        const ParameterInfo paramInfos[] = {
+            ParameterInfo("0", VLRParameterFormFlag_Both, ParameterFloat),
+            ParameterInfo("1", VLRParameterFormFlag_Both, ParameterFloat),
+            ParameterInfo("2", VLRParameterFormFlag_Both, ParameterFloat),
+            ParameterInfo("3", VLRParameterFormFlag_Both, ParameterFloat),
+        };
+
+        if (ParameterInfos.size() == 0) {
+            ParameterInfos.resize(lengthof(paramInfos));
+            std::copy_n(paramInfos, lengthof(paramInfos), ParameterInfos.data());
+        }
+
+        const PlugTypeToProgramPair pairs[] = {
+            ShaderNodePlugType::float1, "VLR::Float4ShaderNode_float1",
+            ShaderNodePlugType::float2, "VLR::Float4ShaderNode_float2",
+            ShaderNodePlugType::float3, "VLR::Float4ShaderNode_float3",
+            ShaderNodePlugType::float4, "VLR::Float4ShaderNode_float4",
         };
         OptiXProgramSet programSet;
         commonInitializeProcedure(context, pairs, lengthof(pairs), &programSet);
@@ -334,6 +589,7 @@ namespace VLR {
     void Float4ShaderNode::finalize(Context &context) {
         OptiXProgramSet &programSet = OptiXProgramSets.at(context.getID());
         commonFinalizeProcedure(context, programSet);
+        OptiXProgramSets.erase(context.getID());
     }
 
     Float4ShaderNode::Float4ShaderNode(Context &context) :
@@ -359,66 +615,154 @@ namespace VLR {
         updateNodeDescriptor();
     }
 
-    bool Float4ShaderNode::set0(const ShaderNodeSocket &outputSocket) {
-        if (!Shared::NodeTypeInfo<float>::ConversionIsDefinedFor(outputSocket.getType()))
+    bool Float4ShaderNode::get(const char* paramName, float* values, uint32_t length) const {
+        if (values == nullptr)
             return false;
-        m_node0 = outputSocket;
-        setupNodeDescriptor();
+
+        if (testParamName(paramName, "0")) {
+            if (length != 1)
+                return false;
+
+            values[0] = m_imm0;
+        }
+        else if (testParamName(paramName, "1")) {
+            if (length != 1)
+                return false;
+
+            values[0] = m_imm1;
+        }
+        else if (testParamName(paramName, "2")) {
+            if (length != 1)
+                return false;
+
+            values[0] = m_imm2;
+        }
+        else if (testParamName(paramName, "3")) {
+            if (length != 1)
+                return false;
+
+            values[0] = m_imm3;
+        }
+        else {
+            return false;
+        }
+
         return true;
     }
 
-    void Float4ShaderNode::set0(float value) {
-        m_imm0 = value;
-        setupNodeDescriptor();
-    }
-
-    bool Float4ShaderNode::set1(const ShaderNodeSocket &outputSocket) {
-        if (!Shared::NodeTypeInfo<float>::ConversionIsDefinedFor(outputSocket.getType()))
+    bool Float4ShaderNode::get(const char* paramName, ShaderNodePlug* plug) const {
+        if (plug == nullptr)
             return false;
-        m_node1 = outputSocket;
-        setupNodeDescriptor();
+
+        if (testParamName(paramName, "0")) {
+            *plug = m_node0;
+        }
+        else if (testParamName(paramName, "1")) {
+            *plug = m_node1;
+        }
+        else if (testParamName(paramName, "2")) {
+            *plug = m_node2;
+        }
+        else if (testParamName(paramName, "3")) {
+            *plug = m_node3;
+        }
+        else {
+            return false;
+        }
+
         return true;
     }
 
-    void Float4ShaderNode::set1(float value) {
-        m_imm1 = value;
-        setupNodeDescriptor();
-    }
-
-    bool Float4ShaderNode::set2(const ShaderNodeSocket &outputSocket) {
-        if (!Shared::NodeTypeInfo<float>::ConversionIsDefinedFor(outputSocket.getType()))
+    bool Float4ShaderNode::set(const char* paramName, const float* values, uint32_t length) {
+        if (values == nullptr)
             return false;
-        m_node2 = outputSocket;
+
+        if (testParamName(paramName, "0")) {
+            if (length != 1)
+                return false;
+
+            m_imm0 = values[0];
+        }
+        else if (testParamName(paramName, "1")) {
+            if (length != 1)
+                return false;
+
+            m_imm1 = values[0];
+        }
+        else if (testParamName(paramName, "2")) {
+            if (length != 1)
+                return false;
+
+            m_imm2 = values[0];
+        }
+        else if (testParamName(paramName, "3")) {
+            if (length != 1)
+                return false;
+
+            m_imm3 = values[0];
+        }
+        else {
+            return false;
+        }
         setupNodeDescriptor();
+
         return true;
     }
 
-    void Float4ShaderNode::set2(float value) {
-        m_imm2 = value;
-        setupNodeDescriptor();
-    }
+    bool Float4ShaderNode::set(const char* paramName, const ShaderNodePlug& plug) {
+        if (testParamName(paramName, "0")) {
+            if (!Shared::NodeTypeInfo<float>::ConversionIsDefinedFrom(plug.getType()))
+                return false;
 
-    bool Float4ShaderNode::set3(const ShaderNodeSocket &outputSocket) {
-        if (!Shared::NodeTypeInfo<float>::ConversionIsDefinedFor(outputSocket.getType()))
+            m_node0 = plug;
+        }
+        else if (testParamName(paramName, "1")) {
+            if (!Shared::NodeTypeInfo<float>::ConversionIsDefinedFrom(plug.getType()))
+                return false;
+
+            m_node1 = plug;
+        }
+        else if (testParamName(paramName, "2")) {
+            if (!Shared::NodeTypeInfo<float>::ConversionIsDefinedFrom(plug.getType()))
+                return false;
+
+            m_node2 = plug;
+        }
+        else if (testParamName(paramName, "3")) {
+            if (!Shared::NodeTypeInfo<float>::ConversionIsDefinedFrom(plug.getType()))
+                return false;
+
+            m_node3 = plug;
+        }
+        else {
             return false;
-        m_node3 = outputSocket;
+        }
         setupNodeDescriptor();
+
         return true;
     }
 
-    void Float4ShaderNode::set3(float value) {
-        m_imm3 = value;
-        setupNodeDescriptor();
-    }
 
 
-
+    std::vector<ParameterInfo> ScaleAndOffsetFloatShaderNode::ParameterInfos;
+    
     std::map<uint32_t, ShaderNode::OptiXProgramSet> ScaleAndOffsetFloatShaderNode::OptiXProgramSets;
 
     // static
     void ScaleAndOffsetFloatShaderNode::initialize(Context &context) {
-        const SocketTypeToProgramPair pairs[] = {
-            ShaderNodeSocketType::float1, "VLR::ScaleAndOffsetFloatShaderNode_float1",
+        const ParameterInfo paramInfos[] = {
+            ParameterInfo("value", VLRParameterFormFlag_Node, ParameterFloat),
+            ParameterInfo("scale", VLRParameterFormFlag_Both, ParameterFloat),
+            ParameterInfo("offset", VLRParameterFormFlag_Both, ParameterFloat),
+        };
+
+        if (ParameterInfos.size() == 0) {
+            ParameterInfos.resize(lengthof(paramInfos));
+            std::copy_n(paramInfos, lengthof(paramInfos), ParameterInfos.data());
+        }
+
+        const PlugTypeToProgramPair pairs[] = {
+            ShaderNodePlugType::float1, "VLR::ScaleAndOffsetFloatShaderNode_float1",
         };
         OptiXProgramSet programSet;
         commonInitializeProcedure(context, pairs, lengthof(pairs), &programSet);
@@ -430,6 +774,7 @@ namespace VLR {
     void ScaleAndOffsetFloatShaderNode::finalize(Context &context) {
         OptiXProgramSet &programSet = OptiXProgramSets.at(context.getID());
         commonFinalizeProcedure(context, programSet);
+        OptiXProgramSets.erase(context.getID());
     }
 
     ScaleAndOffsetFloatShaderNode::ScaleAndOffsetFloatShaderNode(Context &context) :
@@ -451,48 +796,120 @@ namespace VLR {
         updateNodeDescriptor();
     }
 
-    bool ScaleAndOffsetFloatShaderNode::setValue(const ShaderNodeSocket &outputSocket) {
-        if (!Shared::NodeTypeInfo<float>::ConversionIsDefinedFor(outputSocket.getType()))
+    bool ScaleAndOffsetFloatShaderNode::get(const char* paramName, float* values, uint32_t length) const {
+        if (values == nullptr)
             return false;
-        m_nodeValue = outputSocket;
-        setupNodeDescriptor();
+
+        if (testParamName(paramName, "scale")) {
+            if (length != 1)
+                return false;
+
+            values[0] = m_immScale;
+        }
+        else if (testParamName(paramName, "offset")) {
+            if (length != 1)
+                return false;
+
+            values[0] = m_immOffset;
+        }
+        else {
+            return false;
+        }
+
         return true;
     }
 
-    bool ScaleAndOffsetFloatShaderNode::setScale(const ShaderNodeSocket &outputSocket) {
-        if (!Shared::NodeTypeInfo<float>::ConversionIsDefinedFor(outputSocket.getType()))
+    bool ScaleAndOffsetFloatShaderNode::get(const char* paramName, ShaderNodePlug* plug) const {
+        if (plug == nullptr)
             return false;
-        m_nodeScale = outputSocket;
-        setupNodeDescriptor();
+
+        if (testParamName(paramName, "value")) {
+            *plug = m_nodeValue;
+        }
+        else if (testParamName(paramName, "scale")) {
+            *plug = m_nodeScale;
+        }
+        else if (testParamName(paramName, "offset")) {
+            *plug = m_nodeOffset;
+        }
+        else {
+            return false;
+        }
+
         return true;
     }
 
-    bool ScaleAndOffsetFloatShaderNode::setOffset(const ShaderNodeSocket &outputSocket) {
-        if (!Shared::NodeTypeInfo<float>::ConversionIsDefinedFor(outputSocket.getType()))
+    bool ScaleAndOffsetFloatShaderNode::set(const char* paramName, const float* values, uint32_t length) {
+        if (values == nullptr)
             return false;
-        m_nodeOffset = outputSocket;
+
+        if (testParamName(paramName, "scale")) {
+            if (length != 1)
+                return false;
+
+            m_immScale = values[0];
+        }
+        else if (testParamName(paramName, "offset")) {
+            if (length != 1)
+                return false;
+
+            m_immOffset = values[0];
+        }
+        else {
+            return false;
+        }
         setupNodeDescriptor();
+
         return true;
     }
 
-    void ScaleAndOffsetFloatShaderNode::setScale(float value) {
-        m_immScale = value;
-        setupNodeDescriptor();
+    bool ScaleAndOffsetFloatShaderNode::set(const char* paramName, const ShaderNodePlug& plug) {
+        if (testParamName(paramName, "value")) {
+            if (!Shared::NodeTypeInfo<float>::ConversionIsDefinedFrom(plug.getType()))
+                return false;
+
+            m_nodeValue = plug;
+        }
+        else if (testParamName(paramName, "scale")) {
+            if (!Shared::NodeTypeInfo<float>::ConversionIsDefinedFrom(plug.getType()))
+                return false;
+
+            m_nodeScale = plug;
+        }
+        else if (testParamName(paramName, "offset")) {
+            if (!Shared::NodeTypeInfo<float>::ConversionIsDefinedFrom(plug.getType()))
+                return false;
+
+            m_nodeOffset = plug;
+        }
+        else {
+            return false;
+        }
+
+        return true;
     }
 
-    void ScaleAndOffsetFloatShaderNode::setOffset(float value) {
-        m_immOffset = value;
-        setupNodeDescriptor();
-    }
 
 
-
+    std::vector<ParameterInfo> TripletSpectrumShaderNode::ParameterInfos;
+    
     std::map<uint32_t, ShaderNode::OptiXProgramSet> TripletSpectrumShaderNode::OptiXProgramSets;
 
     // static
     void TripletSpectrumShaderNode::initialize(Context &context) {
-        const SocketTypeToProgramPair pairs[] = {
-            ShaderNodeSocketType::Spectrum, "VLR::TripletSpectrumShaderNode_Spectrum",
+        const ParameterInfo paramInfos[] = {
+            ParameterInfo("spectrum type", VLRParameterFormFlag_ImmediateValue, EnumSpectrumType),
+            ParameterInfo("color space", VLRParameterFormFlag_ImmediateValue, EnumColorSpace),
+            ParameterInfo("triplet", VLRParameterFormFlag_ImmediateValue, ParameterFloat, 3),
+        };
+
+        if (ParameterInfos.size() == 0) {
+            ParameterInfos.resize(lengthof(paramInfos));
+            std::copy_n(paramInfos, lengthof(paramInfos), ParameterInfos.data());
+        }
+
+        const PlugTypeToProgramPair pairs[] = {
+            ShaderNodePlugType::Spectrum, "VLR::TripletSpectrumShaderNode_Spectrum",
         };
         OptiXProgramSet programSet;
         commonInitializeProcedure(context, pairs, lengthof(pairs), &programSet);
@@ -504,6 +921,7 @@ namespace VLR {
     void TripletSpectrumShaderNode::finalize(Context &context) {
         OptiXProgramSet &programSet = OptiXProgramSets.at(context.getID());
         commonFinalizeProcedure(context, programSet);
+        OptiXProgramSets.erase(context.getID());
     }
 
     TripletSpectrumShaderNode::TripletSpectrumShaderNode(Context &context) :
@@ -522,31 +940,109 @@ namespace VLR {
         updateNodeDescriptor();
     }
 
-    void TripletSpectrumShaderNode::setSpectrumType(SpectrumType spectrumType) {
-        m_spectrumType = spectrumType;
-        setupNodeDescriptor();
+    bool TripletSpectrumShaderNode::get(const char* paramName, const char** enumValue) const {
+        if (enumValue == nullptr)
+            return false;
+
+        if (testParamName(paramName, "spectrum type")) {
+            *enumValue = getEnumMemberFromValue(m_spectrumType);
+            VLRAssert(*enumValue != nullptr, "Invalid enum value");
+        }
+        else if (testParamName(paramName, "color space")) {
+            *enumValue = getEnumMemberFromValue(m_colorSpace);
+            VLRAssert(*enumValue != nullptr, "Invalid enum value");
+        }
+        else {
+            return false;
+        }
+
+        return true;
     }
 
-    void TripletSpectrumShaderNode::setColorSpace(ColorSpace colorSpace) {
-        m_colorSpace = colorSpace;
-        setupNodeDescriptor();
+    bool TripletSpectrumShaderNode::get(const char* paramName, float* values, uint32_t length) const {
+        if (values == nullptr)
+            return false;
+
+        if (testParamName(paramName, "triplet")) {
+            if (length != 3)
+                return false;
+
+            values[0] = m_immE0;
+            values[1] = m_immE1;
+            values[2] = m_immE2;
+        }
+        else {
+            return false;
+        }
+
+        return true;
     }
 
-    void TripletSpectrumShaderNode::setTriplet(float e0, float e1, float e2) {
-        m_immE0 = e0;
-        m_immE1 = e1;
-        m_immE2 = e2;
+    bool TripletSpectrumShaderNode::set(const char* paramName, const char* enumValue) {
+        if (testParamName(paramName, "spectrum type")) {
+            auto v = getEnumValueFromMember<SpectrumType>(enumValue);
+            if (v == (SpectrumType)0xFFFFFFFF)
+                return false;
+
+            m_spectrumType = v;
+        }
+        else if (testParamName(paramName, "color space")) {
+            auto v = getEnumValueFromMember<ColorSpace>(enumValue);
+            if (v == (ColorSpace)0xFFFFFFFF)
+                return false;
+
+            m_colorSpace = v;
+        }
+        else {
+            return false;
+        }
         setupNodeDescriptor();
+
+        return true;
+    }
+
+    bool TripletSpectrumShaderNode::set(const char* paramName, const float* values, uint32_t length) {
+        if (values == nullptr)
+            return false;
+
+        if (testParamName(paramName, "triplet")) {
+            if (length != 3)
+                return false;
+
+            m_immE0 = values[0];
+            m_immE1 = values[1];
+            m_immE2 = values[2];
+        }
+        else {
+            return false;
+        }
+        setupNodeDescriptor();
+
+        return true;
     }
 
 
 
+    std::vector<ParameterInfo> RegularSampledSpectrumShaderNode::ParameterInfos;
+    
     std::map<uint32_t, ShaderNode::OptiXProgramSet> RegularSampledSpectrumShaderNode::OptiXProgramSets;
 
     // static
     void RegularSampledSpectrumShaderNode::initialize(Context &context) {
-        const SocketTypeToProgramPair pairs[] = {
-            ShaderNodeSocketType::Spectrum, "VLR::RegularSampledSpectrumShaderNode_Spectrum",
+        const ParameterInfo paramInfos[] = {
+            ParameterInfo("spectrum type", VLRParameterFormFlag_ImmediateValue, EnumSpectrumType),
+            ParameterInfo("min wavelength", VLRParameterFormFlag_ImmediateValue, ParameterFloat),
+            ParameterInfo("max wavelength", VLRParameterFormFlag_ImmediateValue, ParameterFloat),
+            ParameterInfo("values", VLRParameterFormFlag_ImmediateValue, ParameterFloat, 0),
+        };
+
+        if (ParameterInfos.size() == 0) {
+            ParameterInfos.resize(lengthof(paramInfos));
+            std::copy_n(paramInfos, lengthof(paramInfos), ParameterInfos.data());
+        }
+
+        const PlugTypeToProgramPair pairs[] = {
+            ShaderNodePlugType::Spectrum, "VLR::RegularSampledSpectrumShaderNode_Spectrum",
         };
         OptiXProgramSet programSet;
         commonInitializeProcedure(context, pairs, lengthof(pairs), &programSet);
@@ -558,6 +1054,7 @@ namespace VLR {
     void RegularSampledSpectrumShaderNode::finalize(Context &context) {
         OptiXProgramSet &programSet = OptiXProgramSets.at(context.getID());
         commonFinalizeProcedure(context, programSet);
+        OptiXProgramSets.erase(context.getID());
     }
 
     RegularSampledSpectrumShaderNode::RegularSampledSpectrumShaderNode(Context &context) :
@@ -592,26 +1089,128 @@ namespace VLR {
         updateNodeDescriptor();
     }
 
-    void RegularSampledSpectrumShaderNode::setSpectrum(SpectrumType spectrumType, float minLambda, float maxLambda, const float* values, uint32_t numSamples) {
-        if (m_values)
-            delete[] m_values;
-        m_spectrumType = spectrumType;
-        m_minLambda = minLambda;
-        m_maxLambda = maxLambda;
-        m_values = new float[numSamples];
-        std::copy_n(values, numSamples, m_values);
-        m_numSamples = numSamples;
+    bool RegularSampledSpectrumShaderNode::get(const char* paramName, const char** enumValue) const {
+        if (enumValue == nullptr)
+            return false;
+
+        if (testParamName(paramName, "spectrum type")) {
+            *enumValue = getEnumMemberFromValue(m_spectrumType);
+            VLRAssert(*enumValue != nullptr, "Invalid enum value");
+        }
+        else {
+            return false;
+        }
+
+        return true;
+    }
+
+    bool RegularSampledSpectrumShaderNode::get(const char* paramName, float* values, uint32_t length) const {
+        if (values == nullptr)
+            return true;
+
+        if (testParamName(paramName, "min wavelength")) {
+            if (length != 1)
+                return false;
+
+            values[0] = m_minLambda;
+        }
+        else if (testParamName(paramName, "max wavelength")) {
+            if (length != 1)
+                return false;
+
+            values[0] = m_maxLambda;
+        }
+        else {
+            return false;
+        }
+
+        return true;
+    }
+
+    bool RegularSampledSpectrumShaderNode::get(const char* paramName, const float** values, uint32_t* length) const {
+        if (values == nullptr || length == nullptr)
+            return true;
+
+        if (testParamName(paramName, "values")) {
+            *values = m_values;
+            *length = m_numSamples;
+        }
+        else {
+            return false;
+        }
+
+        return true;
+    }
+
+    bool RegularSampledSpectrumShaderNode::set(const char* paramName, const char* enumValue) {
+        if (enumValue == nullptr)
+            return false;
+
+        if (testParamName(paramName, "spectrum type")) {
+            auto v = getEnumValueFromMember<SpectrumType>(enumValue);
+            if (v == (SpectrumType)0xFFFFFFFF)
+                return false;
+
+            m_spectrumType = v;
+        }
+        else {
+            return false;
+        }
         setupNodeDescriptor();
+
+        return true;
+    }
+
+    bool RegularSampledSpectrumShaderNode::set(const char* paramName, const float* values, uint32_t length) {
+        if (testParamName(paramName, "min wavelength")) {
+            if (length != 1)
+                return false;
+
+            m_minLambda = values[0];
+        }
+        else if (testParamName(paramName, "max wavelength")) {
+            if (length != 1)
+                return false;
+
+            m_maxLambda = values[0];
+        }
+        else if (testParamName(paramName, "values")) {
+            if (m_values)
+                delete[] m_values;
+
+            m_numSamples = length;
+            m_values = new float[m_numSamples];
+            std::copy_n(values, m_numSamples, m_values);
+        }
+        else {
+            return false;
+        }
+        setupNodeDescriptor();
+
+        return true;
     }
 
 
 
+    std::vector<ParameterInfo> IrregularSampledSpectrumShaderNode::ParameterInfos;
+    
     std::map<uint32_t, ShaderNode::OptiXProgramSet> IrregularSampledSpectrumShaderNode::OptiXProgramSets;
 
     // static
     void IrregularSampledSpectrumShaderNode::initialize(Context &context) {
-        const SocketTypeToProgramPair pairs[] = {
-            ShaderNodeSocketType::Spectrum, "VLR::IrregularSampledSpectrumShaderNode_Spectrum",
+        const ParameterInfo paramInfos[] = {
+            ParameterInfo("spectrum type", VLRParameterFormFlag_ImmediateValue, EnumSpectrumType),
+            ParameterInfo("wavelengths", VLRParameterFormFlag_ImmediateValue, ParameterFloat, 0),
+            ParameterInfo("values", VLRParameterFormFlag_ImmediateValue, ParameterFloat, 0),
+        };
+
+        if (ParameterInfos.size() == 0) {
+            ParameterInfos.resize(lengthof(paramInfos));
+            std::copy_n(paramInfos, lengthof(paramInfos), ParameterInfos.data());
+        }
+
+        const PlugTypeToProgramPair pairs[] = {
+            ShaderNodePlugType::Spectrum, "VLR::IrregularSampledSpectrumShaderNode_Spectrum",
         };
         OptiXProgramSet programSet;
         commonInitializeProcedure(context, pairs, lengthof(pairs), &programSet);
@@ -623,6 +1222,7 @@ namespace VLR {
     void IrregularSampledSpectrumShaderNode::finalize(Context &context) {
         OptiXProgramSet &programSet = OptiXProgramSets.at(context.getID());
         commonFinalizeProcedure(context, programSet);
+        OptiXProgramSets.erase(context.getID());
     }
 
     IrregularSampledSpectrumShaderNode::IrregularSampledSpectrumShaderNode(Context &context) :
@@ -661,28 +1261,105 @@ namespace VLR {
         updateNodeDescriptor();
     }
 
-    void IrregularSampledSpectrumShaderNode::setSpectrum(SpectrumType spectrumType, const float* lambdas, const float* values, uint32_t numSamples) {
-        if (m_values) {
-            delete[] m_lambdas;
-            delete[] m_values;
+    bool IrregularSampledSpectrumShaderNode::get(const char* paramName, const char** enumValue) const {
+        if (enumValue == nullptr)
+            return false;
+
+        if (testParamName(paramName, "spectrum type")) {
+            *enumValue = getEnumMemberFromValue(m_spectrumType);
+            VLRAssert(*enumValue != nullptr, "Invalid enum value");
         }
-        m_spectrumType = spectrumType;
-        m_lambdas = new float[numSamples];
-        m_values = new float[numSamples];
-        std::copy_n(lambdas, numSamples, m_lambdas);
-        std::copy_n(values, numSamples, m_values);
-        m_numSamples = numSamples;
+        else {
+            return false;
+        }
+
+        return true;
+    }
+
+    bool IrregularSampledSpectrumShaderNode::get(const char* paramName, const float** values, uint32_t* length) const {
+        if (values == nullptr || length == nullptr)
+            return true;
+
+        if (testParamName(paramName, "wavelengths")) {
+            *values = m_lambdas;
+            *length = m_numSamples;
+        }
+        else if (testParamName(paramName, "values")) {
+            *values = m_values;
+            *length = m_numSamples;
+        }
+        else {
+            return false;
+        }
+
+        return true;
+    }
+
+    bool IrregularSampledSpectrumShaderNode::set(const char* paramName, const char* enumValue) {
+        if (enumValue == nullptr)
+            return false;
+
+        if (testParamName(paramName, "spectrum type")) {
+            auto v = getEnumValueFromMember<SpectrumType>(enumValue);
+            if (v == (SpectrumType)0xFFFFFFFF)
+                return false;
+
+            m_spectrumType = v;
+        }
+        else {
+            return false;
+        }
         setupNodeDescriptor();
+
+        return true;
+    }
+
+    bool IrregularSampledSpectrumShaderNode::set(const char* paramName, const float* values, uint32_t length) {
+        if (testParamName(paramName, "wavelengths")) {
+            if (m_lambdas)
+                delete[] m_lambdas;
+
+            m_numSamples = length;
+            m_lambdas = new float[m_numSamples];
+            std::copy_n(values, m_numSamples, m_lambdas);
+        }
+        else if (testParamName(paramName, "values")) {
+            if (m_values)
+                delete[] m_values;
+
+            m_numSamples = length;
+            m_values = new float[m_numSamples];
+            std::copy_n(values, m_numSamples, m_values);
+        }
+        else {
+            return false;
+        }
+        setupNodeDescriptor();
+
+        return true;
     }
 
 
 
+    std::vector<ParameterInfo> Float3ToSpectrumShaderNode::ParameterInfos;
+    
     std::map<uint32_t, ShaderNode::OptiXProgramSet> Float3ToSpectrumShaderNode::OptiXProgramSets;
 
     // static
     void Float3ToSpectrumShaderNode::initialize(Context &context) {
-        const SocketTypeToProgramPair pairs[] = {
-            ShaderNodeSocketType::Spectrum, "VLR::Float3ToSpectrumShaderNode_Spectrum",
+        const ParameterInfo paramInfos[] = {
+            ParameterInfo("spectrum type", VLRParameterFormFlag_ImmediateValue, EnumSpectrumType),
+            ParameterInfo("color space", VLRParameterFormFlag_ImmediateValue, EnumColorSpace),
+            ParameterInfo("value", VLRParameterFormFlag_Both, ParameterFloat, 3),
+        };
+
+        if (ParameterInfos.size() == 0) {
+            ParameterInfos.resize(lengthof(paramInfos));
+            std::copy_n(paramInfos, lengthof(paramInfos), ParameterInfos.data());
+        }
+
+        const PlugTypeToProgramPair pairs[] = {
+            ShaderNodePlugType::Spectrum, "VLR::Float3ToSpectrumShaderNode_Spectrum",
         };
         OptiXProgramSet programSet;
         commonInitializeProcedure(context, pairs, lengthof(pairs), &programSet);
@@ -694,6 +1371,7 @@ namespace VLR {
     void Float3ToSpectrumShaderNode::finalize(Context &context) {
         OptiXProgramSet &programSet = OptiXProgramSets.at(context.getID());
         commonFinalizeProcedure(context, programSet);
+        OptiXProgramSets.erase(context.getID());
     }
 
     Float3ToSpectrumShaderNode::Float3ToSpectrumShaderNode(Context &context) :
@@ -716,35 +1394,136 @@ namespace VLR {
         updateNodeDescriptor();
     }
 
-    bool Float3ToSpectrumShaderNode::setFloat3(const ShaderNodeSocket &outputSocket) {
-        if (!Shared::NodeTypeInfo<optix::float3>::ConversionIsDefinedFor(outputSocket.getType()))
+    bool Float3ToSpectrumShaderNode::get(const char* paramName, const char** enumValue) const {
+        if (enumValue == nullptr)
             return false;
-        m_nodeFloat3 = outputSocket;
-        setupNodeDescriptor();
+
+        if (testParamName(paramName, "spectrum type")) {
+            *enumValue = getEnumMemberFromValue(m_spectrumType);
+            VLRAssert(*enumValue != nullptr, "Invalid enum value");
+        }
+        else if (testParamName(paramName, "color space")) {
+            *enumValue = getEnumMemberFromValue(m_colorSpace);
+            VLRAssert(*enumValue != nullptr, "Invalid enum value");
+        }
+        else {
+            return false;
+        }
+
         return true;
     }
 
-    void Float3ToSpectrumShaderNode::setFloat3(const float value[3]) {
-        m_immFloat3[0] = value[0];
-        m_immFloat3[1] = value[1];
-        m_immFloat3[2] = value[2];
-        setupNodeDescriptor();
+    bool Float3ToSpectrumShaderNode::get(const char* paramName, float* values, uint32_t length) const {
+        if (values == nullptr)
+            return false;
+
+        if (testParamName(paramName, "value")) {
+            if (length != 3)
+                return false;
+
+            values[0] = m_immFloat3[0];
+            values[1] = m_immFloat3[1];
+            values[2] = m_immFloat3[2];
+        }
+        else {
+            return false;
+        }
+
+        return true;
     }
 
-    void Float3ToSpectrumShaderNode::setSpectrumTypeAndColorSpace(SpectrumType spectrumType, ColorSpace colorSpace) {
-        m_spectrumType = spectrumType;
-        m_colorSpace = colorSpace;
+    bool Float3ToSpectrumShaderNode::get(const char* paramName, ShaderNodePlug* plug) const {
+        if (plug == nullptr)
+            return false;
+
+        if (testParamName(paramName, "value")) {
+            *plug = m_nodeFloat3;
+        }
+        else {
+            return false;
+        }
+
+        return true;
+    }
+
+    bool Float3ToSpectrumShaderNode::set(const char* paramName, const char* enumValue) {
+        if (testParamName(paramName, "spectrum type")) {
+            auto v = getEnumValueFromMember<SpectrumType>(enumValue);
+            if (v == (SpectrumType)0xFFFFFFFF)
+                return false;
+
+            m_spectrumType = v;
+        }
+        else if (testParamName(paramName, "color space")) {
+            auto v = getEnumValueFromMember<ColorSpace>(enumValue);
+            if (v == (ColorSpace)0xFFFFFFFF)
+                return false;
+
+            m_colorSpace = v;
+        }
+        else {
+            return false;
+        }
         setupNodeDescriptor();
+
+        return true;
+    }
+
+    bool Float3ToSpectrumShaderNode::set(const char* paramName, const float* values, uint32_t length) {
+        if (values == nullptr)
+            return false;
+
+        if (testParamName(paramName, "value")) {
+            if (length != 3)
+                return false;
+
+            m_immFloat3[0] = values[0];
+            m_immFloat3[1] = values[1];
+            m_immFloat3[2] = values[2];
+        }
+        else {
+            return false;
+        }
+        setupNodeDescriptor();
+
+        return true;
+    }
+
+    bool Float3ToSpectrumShaderNode::set(const char* paramName, const ShaderNodePlug &plug) {
+        if (testParamName(paramName, "value")) {
+            if (!Shared::NodeTypeInfo<optix::float3>::ConversionIsDefinedFrom(plug.getType()))
+                return false;
+
+            m_nodeFloat3 = plug;
+        }
+        else {
+            return false;
+        }
+        setupNodeDescriptor();
+
+        return true;
     }
 
 
 
+    std::vector<ParameterInfo> ScaleAndOffsetUVTextureMap2DShaderNode::ParameterInfos;
+    
     std::map<uint32_t, ShaderNode::OptiXProgramSet> ScaleAndOffsetUVTextureMap2DShaderNode::OptiXProgramSets;
 
     // static
     void ScaleAndOffsetUVTextureMap2DShaderNode::initialize(Context &context) {
-        const SocketTypeToProgramPair pairs[] = {
-            ShaderNodeSocketType::TextureCoordinates, "VLR::ScaleAndOffsetUVTextureMap2DShaderNode_TextureCoordinates",
+        const ParameterInfo paramInfos[] = {
+            ParameterInfo("scale", VLRParameterFormFlag_ImmediateValue, ParameterFloat, 2),
+            ParameterInfo("offset", VLRParameterFormFlag_ImmediateValue, ParameterFloat, 2),
+        };
+
+        if (ParameterInfos.size() == 0) {
+            ParameterInfos.resize(lengthof(paramInfos));
+            std::copy_n(paramInfos, lengthof(paramInfos), ParameterInfos.data());
+        }
+
+        const PlugTypeToProgramPair pairs[] = {
+            ShaderNodePlugType::TextureCoordinates, "VLR::ScaleAndOffsetUVTextureMap2DShaderNode_TextureCoordinates",
         };
         OptiXProgramSet programSet;
         commonInitializeProcedure(context, pairs, lengthof(pairs), &programSet);
@@ -756,6 +1535,7 @@ namespace VLR {
     void ScaleAndOffsetUVTextureMap2DShaderNode::finalize(Context &context) {
         OptiXProgramSet &programSet = OptiXProgramSets.at(context.getID());
         commonFinalizeProcedure(context, programSet);
+        OptiXProgramSets.erase(context.getID());
     }
 
     ScaleAndOffsetUVTextureMap2DShaderNode::ScaleAndOffsetUVTextureMap2DShaderNode(Context &context) :
@@ -776,27 +1556,90 @@ namespace VLR {
         updateNodeDescriptor();
     }
 
-    void ScaleAndOffsetUVTextureMap2DShaderNode::setValues(const float offset[2], const float scale[2]) {
-        std::copy_n(offset, 2, m_offset);
-        std::copy_n(scale, 2, m_scale);
+    bool ScaleAndOffsetUVTextureMap2DShaderNode::get(const char* paramName, float* values, uint32_t length) const {
+        if (values == nullptr)
+            return false;
+
+        if (testParamName(paramName, "scale")) {
+            if (length != 2)
+                return false;
+
+            values[0] = m_scale[0];
+            values[1] = m_scale[1];
+        }
+        else if (testParamName(paramName, "offset")) {
+            if (length != 2)
+                return false;
+
+            values[0] = m_offset[0];
+            values[1] = m_offset[1];
+        }
+        else {
+            return false;
+        }
+
+        return true;
+    }
+
+    bool ScaleAndOffsetUVTextureMap2DShaderNode::set(const char* paramName, const float* values, uint32_t length) {
+        if (values == nullptr)
+            return false;
+
+        if (testParamName(paramName, "scale")) {
+            if (length != 2)
+                return false;
+
+            m_scale[0] = values[0];
+            m_scale[1] = values[1];
+        }
+        else if (testParamName(paramName, "offset")) {
+            if (length != 2)
+                return false;
+
+            m_offset[0] = values[0];
+            m_offset[1] = values[1];
+        }
+        else {
+            return false;
+        }
         setupNodeDescriptor();
+
+        return true;
     }
 
 
 
+    std::vector<ParameterInfo> Image2DTextureShaderNode::ParameterInfos;
+    
     std::map<uint32_t, ShaderNode::OptiXProgramSet> Image2DTextureShaderNode::OptiXProgramSets;
     std::map<uint32_t, LinearImage2D*> Image2DTextureShaderNode::NullImages;
 
     // static
     void Image2DTextureShaderNode::initialize(Context &context) {
-        const SocketTypeToProgramPair pairs[] = {
-            ShaderNodeSocketType::float1, "VLR::Image2DTextureShaderNode_float1",
-            ShaderNodeSocketType::float2, "VLR::Image2DTextureShaderNode_float2",
-            ShaderNodeSocketType::float3, "VLR::Image2DTextureShaderNode_float3",
-            ShaderNodeSocketType::float4, "VLR::Image2DTextureShaderNode_float4",
-            ShaderNodeSocketType::Normal3D, "VLR::Image2DTextureShaderNode_Normal3D",
-            ShaderNodeSocketType::Spectrum, "VLR::Image2DTextureShaderNode_Spectrum",
-            ShaderNodeSocketType::Alpha, "VLR::Image2DTextureShaderNode_Alpha",
+        const ParameterInfo paramInfos[] = {
+            ParameterInfo("image", VLRParameterFormFlag_Node, ParameterImage),
+            ParameterInfo("bump type", VLRParameterFormFlag_ImmediateValue, EnumBumpType),
+            ParameterInfo("bump coeff", VLRParameterFormFlag_ImmediateValue, ParameterFloat),
+            ParameterInfo("min filter", VLRParameterFormFlag_ImmediateValue, EnumTextureFilter),
+            ParameterInfo("mag filter", VLRParameterFormFlag_ImmediateValue, EnumTextureFilter),
+            ParameterInfo("wrap u", VLRParameterFormFlag_ImmediateValue, EnumTextureWrapMode),
+            ParameterInfo("wrap v", VLRParameterFormFlag_ImmediateValue, EnumTextureWrapMode),
+            ParameterInfo("texcoord", VLRParameterFormFlag_Node, ParameterTextureCoordinates),
+        };
+
+        if (ParameterInfos.size() == 0) {
+            ParameterInfos.resize(lengthof(paramInfos));
+            std::copy_n(paramInfos, lengthof(paramInfos), ParameterInfos.data());
+        }
+
+        const PlugTypeToProgramPair pairs[] = {
+            ShaderNodePlugType::float1, "VLR::Image2DTextureShaderNode_float1",
+            ShaderNodePlugType::float2, "VLR::Image2DTextureShaderNode_float2",
+            ShaderNodePlugType::float3, "VLR::Image2DTextureShaderNode_float3",
+            ShaderNodePlugType::float4, "VLR::Image2DTextureShaderNode_float4",
+            ShaderNodePlugType::Normal3D, "VLR::Image2DTextureShaderNode_Normal3D",
+            ShaderNodePlugType::Spectrum, "VLR::Image2DTextureShaderNode_Spectrum",
+            ShaderNodePlugType::Alpha, "VLR::Image2DTextureShaderNode_Alpha",
         };
         OptiXProgramSet programSet;
         commonInitializeProcedure(context, pairs, lengthof(pairs), &programSet);
@@ -814,16 +1657,20 @@ namespace VLR {
 
         OptiXProgramSet &programSet = OptiXProgramSets.at(context.getID());
         commonFinalizeProcedure(context, programSet);
+        OptiXProgramSets.erase(context.getID());
     }
 
     Image2DTextureShaderNode::Image2DTextureShaderNode(Context &context) :
-        ShaderNode(context, sizeof(Shared::Image2DTextureShaderNode)), m_image(NullImages.at(m_context.getID())), m_bumpType(BumpType::NormalMap_DirectX) {
+        ShaderNode(context, sizeof(Shared::Image2DTextureShaderNode)), m_image(NullImages.at(m_context.getID())),
+        m_bumpType(BumpType::NormalMap_DirectX), m_bumpCoeff(1.0f),
+        m_minFilter(TextureFilter::Linear), m_magFilter(TextureFilter::Linear),
+        m_wrapU(TextureWrapMode::Repeat), m_wrapV(TextureWrapMode::Repeat) {
         optix::Context optixContext = context.getOptiXContext();
         m_optixTextureSampler = optixContext->createTextureSampler();
         m_optixTextureSampler->setBuffer(NullImages.at(m_context.getID())->getOptiXObject());
-        m_optixTextureSampler->setWrapMode(0, RT_WRAP_REPEAT);
-        m_optixTextureSampler->setWrapMode(1, RT_WRAP_REPEAT);
-        m_optixTextureSampler->setFilteringModes(RT_FILTER_LINEAR, RT_FILTER_LINEAR, RT_FILTER_NONE);
+        m_optixTextureSampler->setFilteringModes((RTfiltermode)m_minFilter, (RTfiltermode)m_magFilter, RT_FILTER_NONE);
+        m_optixTextureSampler->setWrapMode(0, (RTwrapmode)m_wrapU);
+        m_optixTextureSampler->setWrapMode(1, (RTwrapmode)m_wrapV);
         m_optixTextureSampler->setIndexingMode(RT_TEXTURE_INDEX_NORMALIZED_COORDINATES);
         m_optixTextureSampler->setReadMode(RT_TEXTURE_READ_NORMALIZED_FLOAT);
         m_optixTextureSampler->setMaxAnisotropy(1.0f);
@@ -835,7 +1682,13 @@ namespace VLR {
         m_optixTextureSampler->destroy();
     }
 
-    void Image2DTextureShaderNode::setupNodeDescriptor() const {
+    void Image2DTextureShaderNode::setupNodeDescriptor() {
+        m_optixTextureSampler->setBuffer(m_image->getOptiXObject());
+        m_optixTextureSampler->setFilteringModes((RTfiltermode)m_minFilter, (RTfiltermode)m_magFilter, RT_FILTER_NONE);
+        m_optixTextureSampler->setWrapMode(0, (RTwrapmode)m_wrapU);
+        m_optixTextureSampler->setWrapMode(1, (RTwrapmode)m_wrapV);
+        m_optixTextureSampler->setReadMode(m_image->needsHW_sRGB_degamma() ? RT_TEXTURE_READ_NORMALIZED_FLOAT_SRGB : RT_TEXTURE_READ_NORMALIZED_FLOAT);
+
         auto &nodeData = *getData<Shared::Image2DTextureShaderNode>();
         nodeData.textureID = m_optixTextureSampler->getId();
         nodeData.dataFormat = (unsigned int)m_image->getDataFormat();
@@ -847,49 +1700,202 @@ namespace VLR {
             colorSpace = ColorSpace::Rec709_D65;
         nodeData.colorSpace = (unsigned int)colorSpace;
         nodeData.bumpType = (unsigned int)m_bumpType;
+        const float minCoeff = 1.0f / (1 << (VLR_IMAGE2D_TEXTURE_SHADER_NODE_BUMP_COEFF_BITWIDTH - 1));
+        float coeff = std::round(m_bumpCoeff * (1 << (VLR_IMAGE2D_TEXTURE_SHADER_NODE_BUMP_COEFF_BITWIDTH - 1))) - 1;
+        nodeData.bumpCoeff = VLR::clamp<int32_t>(coeff, 0, (1 << VLR_IMAGE2D_TEXTURE_SHADER_NODE_BUMP_COEFF_BITWIDTH) - 1);
         nodeData.nodeTexCoord = m_nodeTexCoord.getSharedType();
 
         updateNodeDescriptor();
     }
 
-    void Image2DTextureShaderNode::setImage(const Image2D* image) {
-        m_image = image ? image : NullImages.at(m_context.getID());
-        m_optixTextureSampler->setBuffer(m_image->getOptiXObject());
-        m_optixTextureSampler->setReadMode(m_image->needsHW_sRGB_degamma() ? RT_TEXTURE_READ_NORMALIZED_FLOAT_SRGB : RT_TEXTURE_READ_NORMALIZED_FLOAT);
-        setupNodeDescriptor();
-    }
-
-    void Image2DTextureShaderNode::setBumpType(BumpType bumpType) {
-        m_bumpType = bumpType;
-        setupNodeDescriptor();
-    }
-
-    void Image2DTextureShaderNode::setTextureFilterMode(VLRTextureFilter minification, VLRTextureFilter magnification) {
-        m_optixTextureSampler->setFilteringModes((RTfiltermode)minification, (RTfiltermode)magnification, RT_FILTER_NONE);
-    }
-
-    void Image2DTextureShaderNode::setTextureWrapMode(VLRTextureWrapMode x, VLRTextureWrapMode y) {
-        m_optixTextureSampler->setWrapMode(0, (RTwrapmode)x);
-        m_optixTextureSampler->setWrapMode(1, (RTwrapmode)y);
-    }
-
-    bool Image2DTextureShaderNode::setTexCoord(const ShaderNodeSocket &outputSocket) {
-        if (!Shared::NodeTypeInfo<Point3D>::ConversionIsDefinedFor(outputSocket.getType()))
+    bool Image2DTextureShaderNode::get(const char* paramName, const char** enumValue) const {
+        if (enumValue == nullptr)
             return false;
-        m_nodeTexCoord = outputSocket;
+
+        if (testParamName(paramName, "bump type")) {
+            *enumValue = getEnumMemberFromValue(m_bumpType);
+            VLRAssert(*enumValue != nullptr, "Invalid enum value");
+        }
+        else if (testParamName(paramName, "min filter")) {
+            *enumValue = getEnumMemberFromValue(m_minFilter);
+            VLRAssert(*enumValue != nullptr, "Invalid enum value");
+        }
+        else if (testParamName(paramName, "mag filter")) {
+            *enumValue = getEnumMemberFromValue(m_magFilter);
+            VLRAssert(*enumValue != nullptr, "Invalid enum value");
+        }
+        else if (testParamName(paramName, "wrap u")) {
+            *enumValue = getEnumMemberFromValue(m_wrapU);
+            VLRAssert(*enumValue != nullptr, "Invalid enum value");
+        }
+        else if (testParamName(paramName, "wrap v")) {
+            *enumValue = getEnumMemberFromValue(m_wrapV);
+            VLRAssert(*enumValue != nullptr, "Invalid enum value");
+        }
+        else {
+            return false;
+        }
+
+        return true;
+    }
+
+    bool Image2DTextureShaderNode::get(const char* paramName, float* values, uint32_t length) const {
+        if (values == nullptr)
+            return false;
+
+        if (testParamName(paramName, "bump coeff")) {
+            if (length != 1)
+                return false;
+
+            values[0] = m_bumpCoeff;
+        }
+        else {
+            return false;
+        }
+
+        return true;
+    }
+
+    bool Image2DTextureShaderNode::get(const char* paramName, const Image2D** image) const {
+        if (image == nullptr)
+            return false;
+
+        if (testParamName(paramName, "image")) {
+            *image = m_image != NullImages.at(m_context.getID()) ? m_image : nullptr;
+        }
+        else {
+            return false;
+        }
+
+        return true;
+    }
+
+    bool Image2DTextureShaderNode::get(const char* paramName, ShaderNodePlug* plug) const {
+        if (plug == nullptr)
+            return false;
+
+        if (testParamName(paramName, "texcoord")) {
+            *plug = m_nodeTexCoord;
+        }
+        else {
+            return false;
+        }
+
+        return true;
+    }
+
+    bool Image2DTextureShaderNode::set(const char* paramName, const char* enumValue) {
+        if (testParamName(paramName, "bump type")) {
+            auto v = getEnumValueFromMember<BumpType>(enumValue);
+            if (v == (BumpType)0xFFFFFFFF)
+                return false;
+
+            m_bumpType = v;
+        }
+        else if (testParamName(paramName, "min filter")) {
+            auto v = getEnumValueFromMember<TextureFilter>(enumValue);
+            if (v == (TextureFilter)0xFFFFFFFF)
+                return false;
+
+            m_minFilter = v;
+        }
+        else if (testParamName(paramName, "mag filter")) {
+            auto v = getEnumValueFromMember<TextureFilter>(enumValue);
+            if (v == (TextureFilter)0xFFFFFFFF)
+                return false;
+
+            m_magFilter = v;
+        }
+        else if (testParamName(paramName, "wrap u")) {
+            auto v = getEnumValueFromMember<TextureWrapMode>(enumValue);
+            if (v == (TextureWrapMode)0xFFFFFFFF)
+                return false;
+
+            m_wrapU = v;
+        }
+        else if (testParamName(paramName, "wrap v")) {
+            auto v = getEnumValueFromMember<TextureWrapMode>(enumValue);
+            if (v == (TextureWrapMode)0xFFFFFFFF)
+                return false;
+
+            m_wrapV = v;
+        }
+        else {
+            return false;
+        }
         setupNodeDescriptor();
+
+        return true;
+    }
+
+    bool Image2DTextureShaderNode::set(const char* paramName, const float* values, uint32_t length) {
+        if (values == nullptr)
+            return false;
+
+        if (testParamName(paramName, "bump coeff")) {
+            if (length != 1)
+                return false;
+
+            const float minCoeff = 1.0f / (1 << (VLR_IMAGE2D_TEXTURE_SHADER_NODE_BUMP_COEFF_BITWIDTH - 1));
+            m_bumpCoeff = VLR::clamp(values[0], minCoeff, 2.0f);
+        }
+        else {
+            return false;
+        }
+        setupNodeDescriptor();
+
+        return true;
+    }
+
+    bool Image2DTextureShaderNode::set(const char* paramName, const Image2D* image) {
+        if (testParamName(paramName, "image")) {
+            m_image = image ? image : NullImages.at(m_context.getID());
+        }
+        else {
+            return false;
+        }
+        setupNodeDescriptor();
+
+        return true;
+    }
+
+    bool Image2DTextureShaderNode::set(const char* paramName, const ShaderNodePlug &plug) {
+        if (testParamName(paramName, "texcoord")) {
+            if (!Shared::NodeTypeInfo<Point3D>::ConversionIsDefinedFrom(plug.getType()))
+                return false;
+
+            m_nodeTexCoord = plug;
+        }
+        else {
+            return false;
+        }
+        setupNodeDescriptor();
+
         return true;
     }
 
 
+
+    std::vector<ParameterInfo> EnvironmentTextureShaderNode::ParameterInfos;
 
     std::map<uint32_t, ShaderNode::OptiXProgramSet> EnvironmentTextureShaderNode::OptiXProgramSets;
     std::map<uint32_t, LinearImage2D*> EnvironmentTextureShaderNode::NullImages;
 
     // static
     void EnvironmentTextureShaderNode::initialize(Context &context) {
-        const SocketTypeToProgramPair pairs[] = {
-            ShaderNodeSocketType::Spectrum, "VLR::EnvironmentTextureShaderNode_Spectrum",
+        const ParameterInfo paramInfos[] = {
+            ParameterInfo("image", VLRParameterFormFlag_Node, ParameterImage),
+            ParameterInfo("min filter", VLRParameterFormFlag_ImmediateValue, EnumTextureFilter),
+            ParameterInfo("mag filter", VLRParameterFormFlag_ImmediateValue, EnumTextureFilter),
+        };
+
+        if (ParameterInfos.size() == 0) {
+            ParameterInfos.resize(lengthof(paramInfos));
+            std::copy_n(paramInfos, lengthof(paramInfos), ParameterInfos.data());
+        }
+
+        const PlugTypeToProgramPair pairs[] = {
+            ShaderNodePlugType::Spectrum, "VLR::EnvironmentTextureShaderNode_Spectrum",
         };
         OptiXProgramSet programSet;
         commonInitializeProcedure(context, pairs, lengthof(pairs), &programSet);
@@ -907,6 +1913,7 @@ namespace VLR {
 
         OptiXProgramSet &programSet = OptiXProgramSets.at(context.getID());
         commonFinalizeProcedure(context, programSet);
+        OptiXProgramSets.erase(context.getID());
     }
 
     EnvironmentTextureShaderNode::EnvironmentTextureShaderNode(Context &context) :
@@ -927,36 +1934,83 @@ namespace VLR {
         m_optixTextureSampler->destroy();
     }
 
-    void EnvironmentTextureShaderNode::setupNodeDescriptor() const {
+    void EnvironmentTextureShaderNode::setupNodeDescriptor() {
+        m_optixTextureSampler->setBuffer(m_image->getOptiXObject());
+        m_optixTextureSampler->setFilteringModes((RTfiltermode)m_minFilter, (RTfiltermode)m_magFilter, RT_FILTER_NONE);
+
         auto &nodeData = *getData<Shared::EnvironmentTextureShaderNode>();
         nodeData.textureID = m_optixTextureSampler->getId();
         nodeData.dataFormat = (unsigned int)m_image->getDataFormat();
         nodeData.colorSpace = (unsigned int)m_image->getColorSpace();
-        nodeData.nodeTexCoord = m_nodeTexCoord.getSharedType();
 
         updateNodeDescriptor();
     }
 
-    void EnvironmentTextureShaderNode::setImage(const Image2D* image) {
-        m_image = image ? image : NullImages.at(m_context.getID());
-        m_optixTextureSampler->setBuffer(m_image->getOptiXObject());
-        setupNodeDescriptor();
-    }
-
-    void EnvironmentTextureShaderNode::setTextureFilterMode(VLRTextureFilter minification, VLRTextureFilter magnification, VLRTextureFilter mipmapping) {
-        m_optixTextureSampler->setFilteringModes((RTfiltermode)minification, (RTfiltermode)magnification, (RTfiltermode)mipmapping);
-    }
-
-    void EnvironmentTextureShaderNode::setTextureWrapMode(VLRTextureWrapMode x, VLRTextureWrapMode y) {
-        m_optixTextureSampler->setWrapMode(0, (RTwrapmode)x);
-        m_optixTextureSampler->setWrapMode(1, (RTwrapmode)y);
-    }
-
-    bool EnvironmentTextureShaderNode::setTexCoord(const ShaderNodeSocket &outputSocket) {
-        if (!Shared::NodeTypeInfo<Point3D>::ConversionIsDefinedFor(outputSocket.getType()))
+    bool EnvironmentTextureShaderNode::get(const char* paramName, const char** enumValue) const {
+        if (enumValue == nullptr)
             return false;
-        m_nodeTexCoord = outputSocket;
+
+        if (testParamName(paramName, "min filter")) {
+            *enumValue = getEnumMemberFromValue(m_minFilter);
+            VLRAssert(*enumValue != nullptr, "Invalid enum value");
+        }
+        else if (testParamName(paramName, "mag filter")) {
+            *enumValue = getEnumMemberFromValue(m_magFilter);
+            VLRAssert(*enumValue != nullptr, "Invalid enum value");
+        }
+        else {
+            return false;
+        }
+
+        return true;
+    }
+
+    bool EnvironmentTextureShaderNode::get(const char* paramName, const Image2D** image) const {
+        if (image == nullptr)
+            return false;
+
+        if (testParamName(paramName, "image")) {
+            *image = m_image != NullImages.at(m_context.getID()) ? m_image : nullptr;
+        }
+        else {
+            return false;
+        }
+
+        return true;
+    }
+
+    bool EnvironmentTextureShaderNode::set(const char* paramName, const char* enumValue) {
+        if (testParamName(paramName, "min filter")) {
+            auto v = getEnumValueFromMember<TextureFilter>(enumValue);
+            if (v == (TextureFilter)0xFFFFFFFF)
+                return false;
+
+            m_minFilter = v;
+        }
+        else if (testParamName(paramName, "mag filter")) {
+            auto v = getEnumValueFromMember<TextureFilter>(enumValue);
+            if (v == (TextureFilter)0xFFFFFFFF)
+                return false;
+
+            m_magFilter = v;
+        }
+        else {
+            return false;
+        }
         setupNodeDescriptor();
+
+        return true;
+    }
+
+    bool EnvironmentTextureShaderNode::set(const char* paramName, const Image2D* image) {
+        if (testParamName(paramName, "image")) {
+            m_image = image ? image : NullImages.at(m_context.getID());
+        }
+        else {
+            return false;
+        }
+        setupNodeDescriptor();
+
         return true;
     }
 

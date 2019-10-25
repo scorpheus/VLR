@@ -1,9 +1,11 @@
 ﻿#include "materials.h"
 
 namespace VLR {
+    std::string SurfaceMaterial::s_materials_ptx;
+
     // static
     void SurfaceMaterial::commonInitializeProcedure(Context &context, const char* identifiers[10], OptiXProgramSet* programSet) {
-        std::string ptx = readTxtFile(getExecutableDirectory() / "ptxes/materials.ptx");
+        const std::string &ptx = s_materials_ptx;
 
         optix::Context optixContext = context.getOptiXContext();
 
@@ -94,6 +96,8 @@ namespace VLR {
 
     // static
     void SurfaceMaterial::initialize(Context &context) {
+        s_materials_ptx = readTxtFile(getExecutableDirectory() / "ptxes/materials.ptx");
+
         MatteSurfaceMaterial::initialize(context);
         SpecularReflectionSurfaceMaterial::initialize(context);
         SpecularScatteringSurfaceMaterial::initialize(context);
@@ -122,7 +126,7 @@ namespace VLR {
         MatteSurfaceMaterial::finalize(context);
     }
 
-    SurfaceMaterial::SurfaceMaterial(Context &context) : Object(context) {
+    SurfaceMaterial::SurfaceMaterial(Context &context) : Queryable(context) {
         m_matIndex = m_context.allocateSurfaceMaterialDescriptor();
     }
 
@@ -134,10 +138,21 @@ namespace VLR {
 
 
 
+    std::vector<ParameterInfo> MatteSurfaceMaterial::ParameterInfos;
+    
     std::map<uint32_t, SurfaceMaterial::OptiXProgramSet> MatteSurfaceMaterial::OptiXProgramSets;
 
     // static
     void MatteSurfaceMaterial::initialize(Context &context) {
+        const ParameterInfo paramInfos[] = {
+            ParameterInfo("albedo", VLRParameterFormFlag_Both, ParameterSpectrum),
+        };
+
+        if (ParameterInfos.size() == 0) {
+            ParameterInfos.resize(lengthof(paramInfos));
+            std::copy_n(paramInfos, lengthof(paramInfos), ParameterInfos.data());
+        }
+
         const char* identifiers[] = {
             "VLR::MatteSurfaceMaterial_setupBSDF",
             "VLR::MatteBRDF_getBaseColor",
@@ -160,10 +175,11 @@ namespace VLR {
     void MatteSurfaceMaterial::finalize(Context &context) {
         OptiXProgramSet &programSet = OptiXProgramSets.at(context.getID());
         commonFinalizeProcedure(context, programSet);
+        OptiXProgramSets.erase(context.getID());
     }
 
     MatteSurfaceMaterial::MatteSurfaceMaterial(Context &context) :
-        SurfaceMaterial(context), m_immAlbedo(createTripletSpectrum(SpectrumType::Reflectance, ColorSpace::Rec709_D65, 0.18f, 0.18f, 0.18f)) {
+        SurfaceMaterial(context), m_immAlbedo(ColorSpace::Rec709_D65, 0.18f, 0.18f, 0.18f) {
         setupMaterialDescriptor();
     }
 
@@ -177,30 +193,85 @@ namespace VLR {
         setupMaterialDescriptorHead(m_context, progSet, &matDesc);
         auto &mat = *matDesc.getData<Shared::MatteSurfaceMaterial>();
         mat.nodeAlbedo = m_nodeAlbedo.getSharedType();
-        mat.immAlbedo = m_immAlbedo;
+        mat.immAlbedo = m_immAlbedo.createTripletSpectrum(SpectrumType::Reflectance);
 
         m_context.updateSurfaceMaterialDescriptor(m_matIndex, matDesc);
     }
 
-    bool MatteSurfaceMaterial::setAlbedo(const ShaderNodeSocket &outputSocket) {
-        if (!Shared::NodeTypeInfo<SampledSpectrum>::ConversionIsDefinedFor(outputSocket.getType()))
+    bool MatteSurfaceMaterial::get(const char* paramName, ImmediateSpectrum* spectrum) const {
+        if (spectrum == nullptr)
             return false;
-        m_nodeAlbedo = outputSocket;
-        setupMaterialDescriptor();
+
+        if (testParamName(paramName, "albedo")) {
+            *spectrum = m_immAlbedo;
+        }
+        else {
+            return false;
+        }
+
         return true;
     }
 
-    void MatteSurfaceMaterial::setAlbedo(ColorSpace colorSpace, float e0, float e1, float e2) {
-        m_immAlbedo = createTripletSpectrum(SpectrumType::Reflectance, colorSpace, e0, e1, e2);
+    bool MatteSurfaceMaterial::get(const char* paramName, ShaderNodePlug* plug) const {
+        if (plug == nullptr)
+            return false;
+
+        if (testParamName(paramName, "albedo")) {
+            *plug = m_nodeAlbedo;
+        }
+        else {
+            return false;
+        }
+
+        return true;
+    }
+
+    bool MatteSurfaceMaterial::set(const char* paramName, const ImmediateSpectrum& spectrum) {
+        if (testParamName(paramName, "albedo")) {
+            m_immAlbedo = spectrum;
+        }
+        else {
+            return false;
+        }
         setupMaterialDescriptor();
+
+        return true;
+    }
+
+    bool MatteSurfaceMaterial::set(const char* paramName, const ShaderNodePlug& plug) {
+        if (testParamName(paramName, "albedo")) {
+            if (!Shared::NodeTypeInfo<SampledSpectrum>::ConversionIsDefinedFrom(plug.getType()))
+                return false;
+
+            m_nodeAlbedo = plug;
+        }
+        else {
+            return false;
+        }
+        setupMaterialDescriptor();
+
+        return true;
     }
 
 
 
+    std::vector<ParameterInfo> SpecularReflectionSurfaceMaterial::ParameterInfos;
+    
     std::map<uint32_t, SurfaceMaterial::OptiXProgramSet> SpecularReflectionSurfaceMaterial::OptiXProgramSets;
 
     // static
     void SpecularReflectionSurfaceMaterial::initialize(Context &context) {
+        const ParameterInfo paramInfos[] = {
+            ParameterInfo("coeff", VLRParameterFormFlag_Both, ParameterSpectrum),
+            ParameterInfo("eta", VLRParameterFormFlag_Both, ParameterSpectrum),
+            ParameterInfo("k", VLRParameterFormFlag_Both, ParameterSpectrum),
+        };
+
+        if (ParameterInfos.size() == 0) {
+            ParameterInfos.resize(lengthof(paramInfos));
+            std::copy_n(paramInfos, lengthof(paramInfos), ParameterInfos.data());
+        }
+
         const char* identifiers[] = {
             "VLR::SpecularReflectionSurfaceMaterial_setupBSDF",
             "VLR::SpecularBRDF_getBaseColor",
@@ -223,13 +294,14 @@ namespace VLR {
     void SpecularReflectionSurfaceMaterial::finalize(Context &context) {
         OptiXProgramSet &programSet = OptiXProgramSets.at(context.getID());
         commonFinalizeProcedure(context, programSet);
+        OptiXProgramSets.erase(context.getID());
     }
 
     SpecularReflectionSurfaceMaterial::SpecularReflectionSurfaceMaterial(Context &context) :
         SurfaceMaterial(context),
-        m_immCoeffR(createTripletSpectrum(SpectrumType::Reflectance, ColorSpace::Rec709_D65, 0.8f, 0.8f, 0.8f)),
-        m_immEta(createTripletSpectrum(SpectrumType::IndexOfRefraction, ColorSpace::Rec709_D65, 1.0f, 1.0f, 1.0f)),
-        m_imm_k(createTripletSpectrum(SpectrumType::IndexOfRefraction, ColorSpace::Rec709_D65, 0.0f, 0.0f, 0.0f)) {
+        m_immCoeff(ColorSpace::Rec709_D65, 0.8f, 0.8f, 0.8f),
+        m_immEta(ColorSpace::Rec709_D65, 1.0f, 1.0f, 1.0f),
+        m_imm_k(ColorSpace::Rec709_D65, 0.0f, 0.0f, 0.0f) {
         setupMaterialDescriptor();
     }
 
@@ -242,61 +314,120 @@ namespace VLR {
         Shared::SurfaceMaterialDescriptor matDesc;
         setupMaterialDescriptorHead(m_context, progSet, &matDesc);
         auto &mat = *matDesc.getData<Shared::SpecularReflectionSurfaceMaterial>();
-        mat.nodeCoeffR = m_nodeCoeffR.getSharedType();
+        mat.nodeCoeffR = m_nodeCoeff.getSharedType();
         mat.nodeEta = m_nodeEta.getSharedType();
         mat.node_k = m_node_k.getSharedType();
-        mat.immCoeffR = m_immCoeffR;
-        mat.immEta = m_immEta;
-        mat.imm_k = m_imm_k;
+        mat.immCoeffR = m_immCoeff.createTripletSpectrum(SpectrumType::Reflectance);
+        mat.immEta = m_immEta.createTripletSpectrum(SpectrumType::IndexOfRefraction);
+        mat.imm_k = m_imm_k.createTripletSpectrum(SpectrumType::IndexOfRefraction);
 
         m_context.updateSurfaceMaterialDescriptor(m_matIndex, matDesc);
     }
 
-    bool SpecularReflectionSurfaceMaterial::setCoeffR(const ShaderNodeSocket &outputSocket) {
-        if (!Shared::NodeTypeInfo<SampledSpectrum>::ConversionIsDefinedFor(outputSocket.getType()))
+    bool SpecularReflectionSurfaceMaterial::get(const char* paramName, ImmediateSpectrum* spectrum) const {
+        if (spectrum == nullptr)
             return false;
-        m_nodeCoeffR = outputSocket;
-        setupMaterialDescriptor();
+
+        if (testParamName(paramName, "coeff")) {
+            *spectrum = m_immCoeff;
+        }
+        else if (testParamName(paramName, "eta")) {
+            *spectrum = m_immEta;
+        }
+        else if (testParamName(paramName, "k")) {
+            *spectrum = m_imm_k;
+        }
+        else {
+            return false;
+        }
+
         return true;
     }
 
-    void SpecularReflectionSurfaceMaterial::setCoeffR(ColorSpace colorSpace, float e0, float e1, float e2) {
-        m_immCoeffR = createTripletSpectrum(SpectrumType::Reflectance, colorSpace, e0, e1, e2);;
-        setupMaterialDescriptor();
-    }
-
-    bool SpecularReflectionSurfaceMaterial::setEta(const ShaderNodeSocket &outputSocket) {
-        if (!Shared::NodeTypeInfo<SampledSpectrum>::ConversionIsDefinedFor(outputSocket.getType()))
+    bool SpecularReflectionSurfaceMaterial::get(const char* paramName, ShaderNodePlug* plug) const {
+        if (plug == nullptr)
             return false;
-        m_nodeEta = outputSocket;
-        setupMaterialDescriptor();
+
+        if (testParamName(paramName, "coeff")) {
+            *plug = m_nodeCoeff;
+        }
+        else if (testParamName(paramName, "eta")) {
+            *plug = m_nodeEta;
+        }
+        else if (testParamName(paramName, "k")) {
+            *plug = m_node_k;
+        }
+        else {
+            return false;
+        }
+
         return true;
     }
 
-    void SpecularReflectionSurfaceMaterial::setEta(ColorSpace colorSpace, float e0, float e1, float e2) {
-        m_immEta = createTripletSpectrum(SpectrumType::IndexOfRefraction, colorSpace, e0, e1, e2);
-        setupMaterialDescriptor();
-    }
-
-    bool SpecularReflectionSurfaceMaterial::set_k(const ShaderNodeSocket &outputSocket) {
-        if (!Shared::NodeTypeInfo<SampledSpectrum>::ConversionIsDefinedFor(outputSocket.getType()))
+    bool SpecularReflectionSurfaceMaterial::set(const char* paramName, const ImmediateSpectrum& spectrum) {
+        if (testParamName(paramName, "coeff")) {
+            m_immCoeff = spectrum;
+        }
+        else if (testParamName(paramName, "eta")) {
+            m_immEta = spectrum;
+        }
+        else if (testParamName(paramName, "k")) {
+            m_imm_k = spectrum;
+        }
+        else {
             return false;
-        m_node_k = outputSocket;
+        }
         setupMaterialDescriptor();
+
         return true;
     }
 
-    void SpecularReflectionSurfaceMaterial::set_k(ColorSpace colorSpace, float e0, float e1, float e2) {
-        m_imm_k = createTripletSpectrum(SpectrumType::IndexOfRefraction, colorSpace, e0, e1, e2);
+    bool SpecularReflectionSurfaceMaterial::set(const char* paramName, const ShaderNodePlug& plug) {
+        if (testParamName(paramName, "coeff")) {
+            if (!Shared::NodeTypeInfo<SampledSpectrum>::ConversionIsDefinedFrom(plug.getType()))
+                return false;
+
+            m_nodeCoeff = plug;
+        }
+        else if (testParamName(paramName, "eta")) {
+            if (!Shared::NodeTypeInfo<SampledSpectrum>::ConversionIsDefinedFrom(plug.getType()))
+                return false;
+
+            m_nodeEta = plug;
+        }
+        else if (testParamName(paramName, "k")) {
+            if (!Shared::NodeTypeInfo<SampledSpectrum>::ConversionIsDefinedFrom(plug.getType()))
+                return false;
+
+            m_node_k = plug;
+        }
+        else {
+            return false;
+        }
         setupMaterialDescriptor();
+
+        return true;
     }
 
 
 
+    std::vector<ParameterInfo> SpecularScatteringSurfaceMaterial::ParameterInfos;
+    
     std::map<uint32_t, SurfaceMaterial::OptiXProgramSet> SpecularScatteringSurfaceMaterial::OptiXProgramSets;
 
     // static
     void SpecularScatteringSurfaceMaterial::initialize(Context &context) {
+        const ParameterInfo paramInfos[] = {
+            ParameterInfo("coeff", VLRParameterFormFlag_Both, ParameterSpectrum),
+            ParameterInfo("eta ext", VLRParameterFormFlag_Both, ParameterSpectrum),
+            ParameterInfo("eta int", VLRParameterFormFlag_Both, ParameterSpectrum),
+        };
+
+        if (ParameterInfos.size() == 0) {
+            ParameterInfos.resize(lengthof(paramInfos));
+            std::copy_n(paramInfos, lengthof(paramInfos), ParameterInfos.data());
+        }
+
         const char* identifiers[] = {
             "VLR::SpecularScatteringSurfaceMaterial_setupBSDF",
             "VLR::SpecularBSDF_getBaseColor",
@@ -319,13 +450,14 @@ namespace VLR {
     void SpecularScatteringSurfaceMaterial::finalize(Context &context) {
         OptiXProgramSet &programSet = OptiXProgramSets.at(context.getID());
         commonFinalizeProcedure(context, programSet);
+        OptiXProgramSets.erase(context.getID());
     }
 
     SpecularScatteringSurfaceMaterial::SpecularScatteringSurfaceMaterial(Context &context) :
         SurfaceMaterial(context),
-        m_immCoeff(createTripletSpectrum(SpectrumType::Reflectance, ColorSpace::Rec709_D65, 0.8f, 0.8f, 0.8f)),
-        m_immEtaExt(createTripletSpectrum(SpectrumType::IndexOfRefraction, ColorSpace::Rec709_D65, 1.0f, 1.0f, 1.0f)),
-        m_immEtaInt(createTripletSpectrum(SpectrumType::IndexOfRefraction, ColorSpace::Rec709_D65, 1.5f, 1.5f, 1.5f)) {
+        m_immCoeff(ColorSpace::Rec709_D65, 0.8f, 0.8f, 0.8f),
+        m_immEtaExt(ColorSpace::Rec709_D65, 1.0f, 1.0f, 1.0f),
+        m_immEtaInt(ColorSpace::Rec709_D65, 1.5f, 1.5f, 1.5f) {
         setupMaterialDescriptor();
     }
 
@@ -341,58 +473,120 @@ namespace VLR {
         mat.nodeCoeff = m_nodeCoeff.getSharedType();
         mat.nodeEtaExt = m_nodeEtaExt.getSharedType();
         mat.nodeEtaInt = m_nodeEtaInt.getSharedType();
-        mat.immCoeff = m_immCoeff;
-        mat.immEtaExt = m_immEtaExt;
-        mat.immEtaInt = m_immEtaInt;
+        mat.immCoeff = m_immCoeff.createTripletSpectrum(SpectrumType::Reflectance);
+        mat.immEtaExt = m_immEtaExt.createTripletSpectrum(SpectrumType::IndexOfRefraction);
+        mat.immEtaInt = m_immEtaInt.createTripletSpectrum(SpectrumType::IndexOfRefraction);
 
         m_context.updateSurfaceMaterialDescriptor(m_matIndex, matDesc);
     }
 
-    bool SpecularScatteringSurfaceMaterial::setCoeff(const ShaderNodeSocket &outputSocket) {
-        if (!Shared::NodeTypeInfo<SampledSpectrum>::ConversionIsDefinedFor(outputSocket.getType()))
+    bool SpecularScatteringSurfaceMaterial::get(const char* paramName, ImmediateSpectrum* spectrum) const {
+        if (spectrum == nullptr)
             return false;
-        m_nodeCoeff = outputSocket;
-        setupMaterialDescriptor();
+
+        if (testParamName(paramName, "coeff")) {
+            *spectrum = m_immCoeff;
+        }
+        else if (testParamName(paramName, "eta ext")) {
+            *spectrum = m_immEtaExt;
+        }
+        else if (testParamName(paramName, "eta int")) {
+            *spectrum = m_immEtaInt;
+        }
+        else {
+            return false;
+        }
+
         return true;
     }
 
-    void SpecularScatteringSurfaceMaterial::setCoeff(ColorSpace colorSpace, float e0, float e1, float e2) {
-        m_immCoeff = createTripletSpectrum(SpectrumType::Reflectance, colorSpace, e0, e1, e2);
-        setupMaterialDescriptor();
-    }
-
-    bool SpecularScatteringSurfaceMaterial::setEtaExt(const ShaderNodeSocket &outputSocket) {
-        if (!Shared::NodeTypeInfo<SampledSpectrum>::ConversionIsDefinedFor(outputSocket.getType()))
+    bool SpecularScatteringSurfaceMaterial::get(const char* paramName, ShaderNodePlug* plug) const {
+        if (plug == nullptr)
             return false;
-        m_nodeEtaExt = outputSocket;
-        setupMaterialDescriptor();
+
+        if (testParamName(paramName, "coeff")) {
+            *plug = m_nodeCoeff;
+        }
+        else if (testParamName(paramName, "eta ext")) {
+            *plug = m_nodeEtaExt;
+        }
+        else if (testParamName(paramName, "eta int")) {
+            *plug = m_nodeEtaInt;
+        }
+        else {
+            return false;
+        }
+
         return true;
     }
 
-    void SpecularScatteringSurfaceMaterial::setEtaExt(ColorSpace colorSpace, float e0, float e1, float e2) {
-        m_immEtaExt = createTripletSpectrum(SpectrumType::IndexOfRefraction, colorSpace, e0, e1, e2);
-        setupMaterialDescriptor();
-    }
-
-    bool SpecularScatteringSurfaceMaterial::setEtaInt(const ShaderNodeSocket &outputSocket) {
-        if (!Shared::NodeTypeInfo<SampledSpectrum>::ConversionIsDefinedFor(outputSocket.getType()))
+    bool SpecularScatteringSurfaceMaterial::set(const char* paramName, const ImmediateSpectrum& spectrum) {
+        if (testParamName(paramName, "coeff")) {
+            m_immCoeff = spectrum;
+        }
+        else if (testParamName(paramName, "eta ext")) {
+            m_immEtaExt = spectrum;
+        }
+        else if (testParamName(paramName, "eta int")) {
+            m_immEtaInt = spectrum;
+        }
+        else {
             return false;
-        m_nodeEtaInt = outputSocket;
+        }
         setupMaterialDescriptor();
+
         return true;
     }
 
-    void SpecularScatteringSurfaceMaterial::setEtaInt(ColorSpace colorSpace, float e0, float e1, float e2) {
-        m_immEtaInt = createTripletSpectrum(SpectrumType::IndexOfRefraction, colorSpace, e0, e1, e2);
+    bool SpecularScatteringSurfaceMaterial::set(const char* paramName, const ShaderNodePlug& plug) {
+        if (testParamName(paramName, "coeff")) {
+            if (!Shared::NodeTypeInfo<SampledSpectrum>::ConversionIsDefinedFrom(plug.getType()))
+                return false;
+
+            m_nodeCoeff = plug;
+        }
+        else if (testParamName(paramName, "eta ext")) {
+            if (!Shared::NodeTypeInfo<SampledSpectrum>::ConversionIsDefinedFrom(plug.getType()))
+                return false;
+
+            m_nodeEtaExt = plug;
+        }
+        else if (testParamName(paramName, "eta int")) {
+            if (!Shared::NodeTypeInfo<SampledSpectrum>::ConversionIsDefinedFrom(plug.getType()))
+                return false;
+
+            m_nodeEtaInt = plug;
+        }
+        else {
+            return false;
+        }
         setupMaterialDescriptor();
+
+        return true;
     }
 
 
 
+    std::vector<ParameterInfo> MicrofacetReflectionSurfaceMaterial::ParameterInfos;
+    
     std::map<uint32_t, SurfaceMaterial::OptiXProgramSet> MicrofacetReflectionSurfaceMaterial::OptiXProgramSets;
 
     // static
     void MicrofacetReflectionSurfaceMaterial::initialize(Context &context) {
+        const ParameterInfo paramInfos[] = {
+            ParameterInfo("eta", VLRParameterFormFlag_Both, ParameterSpectrum),
+            ParameterInfo("k", VLRParameterFormFlag_Both, ParameterSpectrum),
+            ParameterInfo("roughness/anisotropy/rotation", VLRParameterFormFlag_Node, ParameterFloat, 3),
+            ParameterInfo("roughness", VLRParameterFormFlag_ImmediateValue, ParameterFloat),
+            ParameterInfo("anisotropy", VLRParameterFormFlag_ImmediateValue, ParameterFloat),
+            ParameterInfo("rotation", VLRParameterFormFlag_ImmediateValue, ParameterFloat),
+        };
+
+        if (ParameterInfos.size() == 0) {
+            ParameterInfos.resize(lengthof(paramInfos));
+            std::copy_n(paramInfos, lengthof(paramInfos), ParameterInfos.data());
+        }
+
         const char* identifiers[] = {
             "VLR::MicrofacetReflectionSurfaceMaterial_setupBSDF",
             "VLR::MicrofacetBRDF_getBaseColor",
@@ -415,12 +609,13 @@ namespace VLR {
     void MicrofacetReflectionSurfaceMaterial::finalize(Context &context) {
         OptiXProgramSet &programSet = OptiXProgramSets.at(context.getID());
         commonFinalizeProcedure(context, programSet);
+        OptiXProgramSets.erase(context.getID());
     }
 
     MicrofacetReflectionSurfaceMaterial::MicrofacetReflectionSurfaceMaterial(Context &context) :
         SurfaceMaterial(context),
-        m_immEta(createTripletSpectrum(SpectrumType::IndexOfRefraction, ColorSpace::Rec709_D65, 1.0f, 1.0f, 1.0f)),
-        m_imm_k(createTripletSpectrum(SpectrumType::IndexOfRefraction, ColorSpace::Rec709_D65, 0.0f, 0.0f, 0.0f)),
+        m_immEta(ColorSpace::Rec709_D65, 1.0f, 1.0f, 1.0f),
+        m_imm_k(ColorSpace::Rec709_D65, 0.0f, 0.0f, 0.0f),
         m_immRoughness(0.1f), m_immAnisotropy(0.0f), m_immRotation(0.0f) {
         setupMaterialDescriptor();
     }
@@ -437,8 +632,8 @@ namespace VLR {
         mat.nodeEta = m_nodeEta.getSharedType();
         mat.node_k = m_node_k.getSharedType();
         mat.nodeRoughnessAnisotropyRotation = m_nodeRoughnessAnisotropyRotation.getSharedType();
-        mat.immEta = m_immEta;
-        mat.imm_k = m_imm_k;
+        mat.immEta = m_immEta.createTripletSpectrum(SpectrumType::IndexOfRefraction);
+        mat.imm_k = m_imm_k.createTripletSpectrum(SpectrumType::IndexOfRefraction);
         mat.immRoughness = m_immRoughness;
         mat.immAnisotropy = m_immAnisotropy;
         mat.immRotation = m_immRotation;
@@ -446,61 +641,164 @@ namespace VLR {
         m_context.updateSurfaceMaterialDescriptor(m_matIndex, matDesc);
     }
 
-    bool MicrofacetReflectionSurfaceMaterial::setEta(const ShaderNodeSocket &outputSocket) {
-        if (!Shared::NodeTypeInfo<SampledSpectrum>::ConversionIsDefinedFor(outputSocket.getType()))
+    bool MicrofacetReflectionSurfaceMaterial::get(const char* paramName, float* values, uint32_t length) const {
+        if (values == nullptr)
             return false;
-        m_nodeEta = outputSocket;
-        setupMaterialDescriptor();
+
+        if (testParamName(paramName, "roughness")) {
+            if (length != 1)
+                return false;
+
+            values[0] = m_immRoughness;
+        }
+        else if (testParamName(paramName, "anisotropy")) {
+            if (length != 1)
+                return false;
+
+            values[0] = m_immAnisotropy;
+        }
+        else if (testParamName(paramName, "rotation")) {
+            if (length != 1)
+                return false;
+
+            values[0] = m_immRotation;
+        }
+        else {
+            return false;
+        }
+
         return true;
     }
 
-    void MicrofacetReflectionSurfaceMaterial::setEta(ColorSpace colorSpace, float e0, float e1, float e2) {
-        m_immEta = createTripletSpectrum(SpectrumType::IndexOfRefraction, colorSpace, e0, e1, e2);
-        setupMaterialDescriptor();
-    }
-
-    bool MicrofacetReflectionSurfaceMaterial::set_k(const ShaderNodeSocket &outputSocket) {
-        if (!Shared::NodeTypeInfo<SampledSpectrum>::ConversionIsDefinedFor(outputSocket.getType()))
+    bool MicrofacetReflectionSurfaceMaterial::get(const char* paramName, ImmediateSpectrum* spectrum) const {
+        if (spectrum == nullptr)
             return false;
-        m_node_k = outputSocket;
-        setupMaterialDescriptor();
+
+        if (testParamName(paramName, "eta")) {
+            *spectrum = m_immEta;
+        }
+        else if (testParamName(paramName, "k")) {
+            *spectrum = m_imm_k;
+        }
+        else {
+            return false;
+        }
+
         return true;
     }
 
-    void MicrofacetReflectionSurfaceMaterial::set_k(ColorSpace colorSpace, float e0, float e1, float e2) {
-        m_imm_k = createTripletSpectrum(SpectrumType::IndexOfRefraction, colorSpace, e0, e1, e2);
-        setupMaterialDescriptor();
-    }
-
-    bool MicrofacetReflectionSurfaceMaterial::setRoughnessAnisotropyRotation(const ShaderNodeSocket &outputSocket) {
-        if (!Shared::NodeTypeInfo<optix::float3>::ConversionIsDefinedFor(outputSocket.getType()))
+    bool MicrofacetReflectionSurfaceMaterial::get(const char* paramName, ShaderNodePlug* plug) const {
+        if (plug == nullptr)
             return false;
-        m_nodeRoughnessAnisotropyRotation = outputSocket;
-        setupMaterialDescriptor();
+
+        if (testParamName(paramName, "eta")) {
+            *plug = m_nodeEta;
+        }
+        else if (testParamName(paramName, "k")) {
+            *plug = m_node_k;
+        }
+        else if (testParamName(paramName, "roughness/anisotropy/rotation")) {
+            *plug = m_nodeRoughnessAnisotropyRotation;
+        }
+        else {
+            return false;
+        }
+
         return true;
     }
 
-    void MicrofacetReflectionSurfaceMaterial::setRoughness(float value) {
-        m_immRoughness = value;
+    bool MicrofacetReflectionSurfaceMaterial::set(const char* paramName, const float* values, uint32_t length) {
+        if (testParamName(paramName, "roughness")) {
+            if (length != 1)
+                return false;
+
+            m_immRoughness = values[0];
+        }
+        else if (testParamName(paramName, "anisotropy")) {
+            if (length != 1)
+                return false;
+
+            m_immAnisotropy = values[0];
+        }
+        else if (testParamName(paramName, "rotation")) {
+            if (length != 1)
+                return false;
+
+            m_immRotation = values[0];
+        }
+        else {
+            return false;
+        }
         setupMaterialDescriptor();
+
+        return true;
     }
 
-    void MicrofacetReflectionSurfaceMaterial::setAnisotropy(float value) {
-        m_immAnisotropy = value;
+    bool MicrofacetReflectionSurfaceMaterial::set(const char* paramName, const ImmediateSpectrum& spectrum) {
+        if (testParamName(paramName, "eta")) {
+            m_immEta = spectrum;
+        }
+        else if (testParamName(paramName, "k")) {
+            m_imm_k = spectrum;
+        }
+        else {
+            return false;
+        }
         setupMaterialDescriptor();
+
+        return true;
     }
 
-    void MicrofacetReflectionSurfaceMaterial::setRotation(float value) {
-        m_immRotation = value;
+    bool MicrofacetReflectionSurfaceMaterial::set(const char* paramName, const ShaderNodePlug& plug) {
+        if (testParamName(paramName, "eta")) {
+            if (!Shared::NodeTypeInfo<SampledSpectrum>::ConversionIsDefinedFrom(plug.getType()))
+                return false;
+
+            m_nodeEta = plug;
+        }
+        else if (testParamName(paramName, "k")) {
+            if (!Shared::NodeTypeInfo<SampledSpectrum>::ConversionIsDefinedFrom(plug.getType()))
+                return false;
+
+            m_node_k = plug;
+        }
+        else if (testParamName(paramName, "roughness/anisotropy/rotation")) {
+            if (!Shared::NodeTypeInfo<optix::float3>::ConversionIsDefinedFrom(plug.getType()))
+                return false;
+
+            m_nodeRoughnessAnisotropyRotation = plug;
+        }
+        else {
+            return false;
+        }
         setupMaterialDescriptor();
+
+        return true;
     }
 
 
 
+    std::vector<ParameterInfo> MicrofacetScatteringSurfaceMaterial::ParameterInfos;
+    
     std::map<uint32_t, SurfaceMaterial::OptiXProgramSet> MicrofacetScatteringSurfaceMaterial::OptiXProgramSets;
 
     // static
     void MicrofacetScatteringSurfaceMaterial::initialize(Context &context) {
+        const ParameterInfo paramInfos[] = {
+            ParameterInfo("coeff", VLRParameterFormFlag_Both, ParameterSpectrum),
+            ParameterInfo("eta ext", VLRParameterFormFlag_Both, ParameterSpectrum),
+            ParameterInfo("eta Int", VLRParameterFormFlag_Both, ParameterSpectrum),
+            ParameterInfo("roughness/anisotropy/rotation", VLRParameterFormFlag_Node, ParameterFloat, 3),
+            ParameterInfo("roughness", VLRParameterFormFlag_ImmediateValue, ParameterFloat),
+            ParameterInfo("anisotropy", VLRParameterFormFlag_ImmediateValue, ParameterFloat),
+            ParameterInfo("rotation", VLRParameterFormFlag_ImmediateValue, ParameterFloat),
+        };
+
+        if (ParameterInfos.size() == 0) {
+            ParameterInfos.resize(lengthof(paramInfos));
+            std::copy_n(paramInfos, lengthof(paramInfos), ParameterInfos.data());
+        }
+
         const char* identifiers[] = {
             "VLR::MicrofacetScatteringSurfaceMaterial_setupBSDF",
             "VLR::MicrofacetBSDF_getBaseColor",
@@ -523,13 +821,14 @@ namespace VLR {
     void MicrofacetScatteringSurfaceMaterial::finalize(Context &context) {
         OptiXProgramSet &programSet = OptiXProgramSets.at(context.getID());
         commonFinalizeProcedure(context, programSet);
+        OptiXProgramSets.erase(context.getID());
     }
 
     MicrofacetScatteringSurfaceMaterial::MicrofacetScatteringSurfaceMaterial(Context &context) :
         SurfaceMaterial(context),
-        m_immCoeff(createTripletSpectrum(SpectrumType::Reflectance, ColorSpace::Rec709_D65, 0.8f, 0.8f, 0.8f)),
-        m_immEtaExt(createTripletSpectrum(SpectrumType::IndexOfRefraction, ColorSpace::Rec709_D65, 1.0f, 1.0f, 1.0f)),
-        m_immEtaInt(createTripletSpectrum(SpectrumType::IndexOfRefraction, ColorSpace::Rec709_D65, 1.5f, 1.5f, 1.5f)),
+        m_immCoeff(ColorSpace::Rec709_D65, 0.8f, 0.8f, 0.8f),
+        m_immEtaExt(ColorSpace::Rec709_D65, 1.0f, 1.0f, 1.0f),
+        m_immEtaInt(ColorSpace::Rec709_D65, 1.5f, 1.5f, 1.5f),
         m_immRoughness(0.1f), m_immAnisotropy(0.0f), m_immRotation(0.0f) {
         setupMaterialDescriptor();
     }
@@ -547,9 +846,9 @@ namespace VLR {
         mat.nodeEtaExt = m_nodeEtaExt.getSharedType();
         mat.nodeEtaInt = m_nodeEtaInt.getSharedType();
         mat.nodeRoughnessAnisotropyRotation = m_nodeRoughnessAnisotropyRotation.getSharedType();
-        mat.immCoeff = m_immCoeff;
-        mat.immEtaExt = m_immEtaExt;
-        mat.immEtaInt = m_immEtaInt;
+        mat.immCoeff = m_immCoeff.createTripletSpectrum(SpectrumType::Reflectance);
+        mat.immEtaExt = m_immEtaExt.createTripletSpectrum(SpectrumType::IndexOfRefraction);
+        mat.immEtaInt = m_immEtaInt.createTripletSpectrum(SpectrumType::IndexOfRefraction);
         mat.immRoughness = m_immRoughness;
         mat.immAnisotropy = m_immAnisotropy;
         mat.immRotation = m_immRotation;
@@ -557,74 +856,174 @@ namespace VLR {
         m_context.updateSurfaceMaterialDescriptor(m_matIndex, matDesc);
     }
 
-    bool MicrofacetScatteringSurfaceMaterial::setCoeff(const ShaderNodeSocket &outputSocket) {
-        if (!Shared::NodeTypeInfo<SampledSpectrum>::ConversionIsDefinedFor(outputSocket.getType()))
+    bool MicrofacetScatteringSurfaceMaterial::get(const char* paramName, float* values, uint32_t length) const {
+        if (values == nullptr)
             return false;
-        m_nodeCoeff = outputSocket;
-        setupMaterialDescriptor();
+
+        if (testParamName(paramName, "roughness")) {
+            if (length != 1)
+                return false;
+
+            values[0] = m_immRoughness;
+        }
+        else if (testParamName(paramName, "anisotropy")) {
+            if (length != 1)
+                return false;
+
+            values[0] = m_immAnisotropy;
+        }
+        else if (testParamName(paramName, "rotation")) {
+            if (length != 1)
+                return false;
+
+            values[0] = m_immRotation;
+        }
+        else {
+            return false;
+        }
+
         return true;
     }
 
-    void MicrofacetScatteringSurfaceMaterial::setCoeff(ColorSpace colorSpace, float e0, float e1, float e2) {
-        m_immCoeff = createTripletSpectrum(SpectrumType::Reflectance, colorSpace, e0, e1, e2);
-        setupMaterialDescriptor();
-    }
-
-    bool MicrofacetScatteringSurfaceMaterial::setEtaExt(const ShaderNodeSocket &outputSocket) {
-        if (!Shared::NodeTypeInfo<SampledSpectrum>::ConversionIsDefinedFor(outputSocket.getType()))
+    bool MicrofacetScatteringSurfaceMaterial::get(const char* paramName, ImmediateSpectrum* spectrum) const {
+        if (spectrum == nullptr)
             return false;
-        m_nodeEtaExt = outputSocket;
-        setupMaterialDescriptor();
+
+        if (testParamName(paramName, "coeff")) {
+            *spectrum = m_immCoeff;
+        }
+        else if (testParamName(paramName, "eta ext")) {
+            *spectrum = m_immEtaExt;
+        }
+        else if (testParamName(paramName, "eta int")) {
+            *spectrum = m_immEtaInt;
+        }
+        else {
+            return false;
+        }
+
         return true;
     }
 
-    void MicrofacetScatteringSurfaceMaterial::setEtaExt(ColorSpace colorSpace, float e0, float e1, float e2) {
-        m_immEtaExt = createTripletSpectrum(SpectrumType::IndexOfRefraction, colorSpace, e0, e1, e2);
-        setupMaterialDescriptor();
-    }
-
-    bool MicrofacetScatteringSurfaceMaterial::setEtaInt(const ShaderNodeSocket &outputSocket) {
-        if (!Shared::NodeTypeInfo<SampledSpectrum>::ConversionIsDefinedFor(outputSocket.getType()))
+    bool MicrofacetScatteringSurfaceMaterial::get(const char* paramName, ShaderNodePlug* plug) const {
+        if (plug == nullptr)
             return false;
-        m_nodeEtaInt = outputSocket;
-        setupMaterialDescriptor();
+
+        if (testParamName(paramName, "coeff")) {
+            *plug = m_nodeCoeff;
+        }
+        else if (testParamName(paramName, "eta ext")) {
+            *plug = m_nodeEtaExt;
+        }
+        else if (testParamName(paramName, "eta int")) {
+            *plug = m_nodeEtaInt;
+        }
+        else if (testParamName(paramName, "roughness/anisotropy/rotation")) {
+            *plug = m_nodeRoughnessAnisotropyRotation;
+        }
+        else {
+            return false;
+        }
+
         return true;
     }
 
-    void MicrofacetScatteringSurfaceMaterial::setEtaInt(ColorSpace colorSpace, float e0, float e1, float e2) {
-        m_immEtaInt = createTripletSpectrum(SpectrumType::IndexOfRefraction, colorSpace, e0, e1, e2);
-        setupMaterialDescriptor();
-    }
+    bool MicrofacetScatteringSurfaceMaterial::set(const char* paramName, const float* values, uint32_t length) {
+        if (testParamName(paramName, "roughness")) {
+            if (length != 1)
+                return false;
 
-    bool MicrofacetScatteringSurfaceMaterial::setRoughnessAnisotropyRotation(const ShaderNodeSocket &outputSocket) {
-        if (!Shared::NodeTypeInfo<optix::float3>::ConversionIsDefinedFor(outputSocket.getType()))
+            m_immRoughness = values[0];
+        }
+        else if (testParamName(paramName, "anisotropy")) {
+            if (length != 1)
+                return false;
+
+            m_immAnisotropy = values[0];
+        }
+        else if (testParamName(paramName, "rotation")) {
+            if (length != 1)
+                return false;
+
+            m_immRotation = values[0];
+        }
+        else {
             return false;
-        m_nodeRoughnessAnisotropyRotation = outputSocket;
+        }
         setupMaterialDescriptor();
+
         return true;
     }
 
-    void MicrofacetScatteringSurfaceMaterial::setRoughness(float value) {
-        m_immRoughness = value;
+    bool MicrofacetScatteringSurfaceMaterial::set(const char* paramName, const ImmediateSpectrum& spectrum) {
+        if (testParamName(paramName, "coeff")) {
+            m_immCoeff = spectrum;
+        }
+        else if (testParamName(paramName, "eta ext")) {
+            m_immEtaExt = spectrum;
+        }
+        else if (testParamName(paramName, "eta int")) {
+            m_immEtaInt = spectrum;
+        }
+        else {
+            return false;
+        }
         setupMaterialDescriptor();
+
+        return true;
     }
 
-    void MicrofacetScatteringSurfaceMaterial::setAnisotropy(float value) {
-        m_immAnisotropy = value;
+    bool MicrofacetScatteringSurfaceMaterial::set(const char* paramName, const ShaderNodePlug& plug) {
+        if (testParamName(paramName, "coeff")) {
+            if (!Shared::NodeTypeInfo<SampledSpectrum>::ConversionIsDefinedFrom(plug.getType()))
+                return false;
+
+            m_nodeCoeff = plug;
+        }
+        else if (testParamName(paramName, "eta ext")) {
+            if (!Shared::NodeTypeInfo<SampledSpectrum>::ConversionIsDefinedFrom(plug.getType()))
+                return false;
+
+            m_nodeEtaExt = plug;
+        }
+        else if (testParamName(paramName, "eta int")) {
+            if (!Shared::NodeTypeInfo<SampledSpectrum>::ConversionIsDefinedFrom(plug.getType()))
+                return false;
+
+            m_nodeEtaInt = plug;
+        }
+        else if (testParamName(paramName, "roughness/anisotropy/rotation")) {
+            if (!Shared::NodeTypeInfo<optix::float3>::ConversionIsDefinedFrom(plug.getType()))
+                return false;
+
+            m_nodeRoughnessAnisotropyRotation = plug;
+        }
+        else {
+            return false;
+        }
         setupMaterialDescriptor();
+
+        return true;
     }
 
-    void MicrofacetScatteringSurfaceMaterial::setRotation(float value) {
-        m_immRotation = value;
-        setupMaterialDescriptor();
-    }
 
 
-
+    std::vector<ParameterInfo> LambertianScatteringSurfaceMaterial::ParameterInfos;
+    
     std::map<uint32_t, SurfaceMaterial::OptiXProgramSet> LambertianScatteringSurfaceMaterial::OptiXProgramSets;
 
     // static
     void LambertianScatteringSurfaceMaterial::initialize(Context &context) {
+        const ParameterInfo paramInfos[] = {
+            ParameterInfo("coeff", VLRParameterFormFlag_Both, ParameterSpectrum),
+            ParameterInfo("f0", VLRParameterFormFlag_Both, ParameterFloat),
+        };
+
+        if (ParameterInfos.size() == 0) {
+            ParameterInfos.resize(lengthof(paramInfos));
+            std::copy_n(paramInfos, lengthof(paramInfos), ParameterInfos.data());
+        }
+
         const char* identifiers[] = {
             "VLR::LambertianScatteringSurfaceMaterial_setupBSDF",
             "VLR::LambertianBSDF_getBaseColor",
@@ -647,11 +1046,12 @@ namespace VLR {
     void LambertianScatteringSurfaceMaterial::finalize(Context &context) {
         OptiXProgramSet &programSet = OptiXProgramSets.at(context.getID());
         commonFinalizeProcedure(context, programSet);
+        OptiXProgramSets.erase(context.getID());
     }
 
     LambertianScatteringSurfaceMaterial::LambertianScatteringSurfaceMaterial(Context &context) :
         SurfaceMaterial(context),
-        m_immCoeff(createTripletSpectrum(SpectrumType::Reflectance, ColorSpace::Rec709_D65, 0.8f, 0.8f, 0.8f)), m_immF0(0.04f) {
+        m_immCoeff(ColorSpace::Rec709_D65, 0.8f, 0.8f, 0.8f), m_immF0(0.04f) {
         setupMaterialDescriptor();
     }
 
@@ -666,44 +1066,129 @@ namespace VLR {
         auto &mat = *matDesc.getData<Shared::LambertianScatteringSurfaceMaterial>();
         mat.nodeCoeff = m_nodeCoeff.getSharedType();
         mat.nodeF0 = m_nodeF0.getSharedType();
-        mat.immCoeff = m_immCoeff;
+        mat.immCoeff = m_immCoeff.createTripletSpectrum(SpectrumType::Reflectance);
         mat.immF0 = m_immF0;
 
         m_context.updateSurfaceMaterialDescriptor(m_matIndex, matDesc);
     }
 
-    bool LambertianScatteringSurfaceMaterial::setCoeff(const ShaderNodeSocket &outputSocket) {
-        if (!Shared::NodeTypeInfo<SampledSpectrum>::ConversionIsDefinedFor(outputSocket.getType()))
+    bool LambertianScatteringSurfaceMaterial::get(const char* paramName, float* values, uint32_t length) const {
+        if (values == nullptr)
             return false;
-        m_nodeCoeff = outputSocket;
-        setupMaterialDescriptor();
+
+        if (testParamName(paramName, "f0")) {
+            if (length != 1)
+                return false;
+
+            values[0] = m_immF0;
+        }
+        else {
+            return false;
+        }
+
         return true;
     }
 
-    void LambertianScatteringSurfaceMaterial::setCoeff(ColorSpace colorSpace, float e0, float e1, float e2) {
-        m_immCoeff = createTripletSpectrum(SpectrumType::Reflectance, colorSpace, e0, e1, e2);
-        setupMaterialDescriptor();
-    }
-
-    bool LambertianScatteringSurfaceMaterial::setF0(const ShaderNodeSocket &outputSocket) {
-        if (!Shared::NodeTypeInfo<float>::ConversionIsDefinedFor(outputSocket.getType()))
+    bool LambertianScatteringSurfaceMaterial::get(const char* paramName, ImmediateSpectrum* spectrum) const {
+        if (spectrum == nullptr)
             return false;
-        m_nodeF0 = outputSocket;
-        setupMaterialDescriptor();
+
+        if (testParamName(paramName, "coeff")) {
+            *spectrum = m_immCoeff;
+        }
+        else {
+            return false;
+        }
+
         return true;
     }
 
-    void LambertianScatteringSurfaceMaterial::setF0(float value) {
-        m_immF0 = value;
+    bool LambertianScatteringSurfaceMaterial::get(const char* paramName, ShaderNodePlug* plug) const {
+        if (plug == nullptr)
+            return false;
+
+        if (testParamName(paramName, "coeff")) {
+            *plug = m_nodeCoeff;
+        }
+        else if (testParamName(paramName, "f0")) {
+            *plug = m_nodeF0;
+        }
+        else {
+            return false;
+        }
+
+        return true;
+    }
+
+    bool LambertianScatteringSurfaceMaterial::set(const char* paramName, const float* values, uint32_t length) {
+        if (testParamName(paramName, "f0")) {
+            if (length != 1)
+                return false;
+
+            m_immF0 = values[0];
+        }
+        else {
+            return false;
+        }
         setupMaterialDescriptor();
+
+        return true;
+    }
+
+    bool LambertianScatteringSurfaceMaterial::set(const char* paramName, const ImmediateSpectrum& spectrum) {
+        if (testParamName(paramName, "coeff")) {
+            m_immCoeff = spectrum;
+        }
+        else {
+            return false;
+        }
+        setupMaterialDescriptor();
+
+        return true;
+    }
+
+    bool LambertianScatteringSurfaceMaterial::set(const char* paramName, const ShaderNodePlug& plug) {
+        if (testParamName(paramName, "coeff")) {
+            if (!Shared::NodeTypeInfo<SampledSpectrum>::ConversionIsDefinedFrom(plug.getType()))
+                return false;
+
+            m_nodeCoeff = plug;
+        }
+        else if (testParamName(paramName, "f0")) {
+            if (!Shared::NodeTypeInfo<float>::ConversionIsDefinedFrom(plug.getType()))
+                return false;
+
+            m_nodeF0 = plug;
+        }
+        else {
+            return false;
+        }
+        setupMaterialDescriptor();
+
+        return true;
     }
 
 
 
+    std::vector<ParameterInfo> UE4SurfaceMaterial::ParameterInfos;
+    
     std::map<uint32_t, SurfaceMaterial::OptiXProgramSet> UE4SurfaceMaterial::OptiXProgramSets;
 
     // static
     void UE4SurfaceMaterial::initialize(Context &context) {
+        const ParameterInfo paramInfos[] = {
+            ParameterInfo("base color", VLRParameterFormFlag_Both, ParameterSpectrum),
+            ParameterInfo("occlusion/roughness/metallic", VLRParameterFormFlag_Node, ParameterFloat, 3),
+            ParameterInfo("occlusion", VLRParameterFormFlag_ImmediateValue, ParameterFloat),
+            ParameterInfo("roughness", VLRParameterFormFlag_ImmediateValue, ParameterFloat),
+            ParameterInfo("metallic", VLRParameterFormFlag_ImmediateValue, ParameterFloat),
+        };
+
+        if (ParameterInfos.size() == 0) {
+            ParameterInfos.resize(lengthof(paramInfos));
+            std::copy_n(paramInfos, lengthof(paramInfos), ParameterInfos.data());
+        }
+
         const char* identifiers[] = {
             "VLR::UE4SurfaceMaterial_setupBSDF",
             "VLR::DiffuseAndSpecularBRDF_getBaseColor",
@@ -726,11 +1211,12 @@ namespace VLR {
     void UE4SurfaceMaterial::finalize(Context &context) {
         OptiXProgramSet &programSet = OptiXProgramSets.at(context.getID());
         commonFinalizeProcedure(context, programSet);
+        OptiXProgramSets.erase(context.getID());
     }
 
     UE4SurfaceMaterial::UE4SurfaceMaterial(Context &context) :
         SurfaceMaterial(context),
-        m_immBaseColor(createTripletSpectrum(SpectrumType::Reflectance, ColorSpace::Rec709_D65, 0.18f, 0.18f, 0.18f)), m_immOcculusion(0.0f), m_immRoughness(0.1f), m_immMetallic(0.0f) {
+        m_immBaseColor(ColorSpace::Rec709_D65, 0.18f, 0.18f, 0.18f), m_immOcculusion(0.0f), m_immRoughness(0.1f), m_immMetallic(0.0f) {
         setupMaterialDescriptor();
     }
 
@@ -745,7 +1231,7 @@ namespace VLR {
         auto &mat = *matDesc.getData<Shared::UE4SurfaceMaterial>();
         mat.nodeBaseColor = m_nodeBaseColor.getSharedType();
         mat.nodeOcclusionRoughnessMetallic = m_nodeOcclusionRoughnessMetallic.getSharedType();
-        mat.immBaseColor = m_immBaseColor;
+        mat.immBaseColor = m_immBaseColor.createTripletSpectrum(SpectrumType::Reflectance);
         mat.immOcclusion = m_immOcculusion;
         mat.immRoughness = m_immRoughness;
         mat.immMetallic = m_immMetallic;
@@ -753,48 +1239,145 @@ namespace VLR {
         m_context.updateSurfaceMaterialDescriptor(m_matIndex, matDesc);
     }
 
-    bool UE4SurfaceMaterial::setBaseColor(const ShaderNodeSocket &outputSocket) {
-        if (!Shared::NodeTypeInfo<SampledSpectrum>::ConversionIsDefinedFor(outputSocket.getType()))
+    bool UE4SurfaceMaterial::get(const char* paramName, float* values, uint32_t length) const {
+        if (values == nullptr)
             return false;
-        m_nodeBaseColor = outputSocket;
-        setupMaterialDescriptor();
+
+        if (testParamName(paramName, "occlusion")) {
+            if (length != 1)
+                return false;
+
+            values[0] = m_immOcculusion;
+        }
+        else if (testParamName(paramName, "roughness")) {
+            if (length != 1)
+                return false;
+
+            values[0] = m_immRoughness;
+        }
+        else if (testParamName(paramName, "metallic")) {
+            if (length != 1)
+                return false;
+
+            values[0] = m_immMetallic;
+        }
+        else {
+            return false;
+        }
+
         return true;
     }
 
-    void UE4SurfaceMaterial::setBaseColor(ColorSpace colorSpace, float e0, float e1, float e2) {
-        m_immBaseColor = createTripletSpectrum(SpectrumType::Reflectance, colorSpace, e0, e1, e2);
-        setupMaterialDescriptor();
-    }
-
-    bool UE4SurfaceMaterial::setOcclusionRoughnessMetallic(const ShaderNodeSocket &outputSocket) {
-        if (!Shared::NodeTypeInfo<optix::float3>::ConversionIsDefinedFor(outputSocket.getType()))
+    bool UE4SurfaceMaterial::get(const char* paramName, ImmediateSpectrum* spectrum) const {
+        if (spectrum == nullptr)
             return false;
-        m_nodeOcclusionRoughnessMetallic = outputSocket;
-        setupMaterialDescriptor();
+
+        if (testParamName(paramName, "base color")) {
+            *spectrum = m_immBaseColor;
+        }
+        else {
+            return false;
+        }
+
         return true;
     }
 
-    void UE4SurfaceMaterial::setOcclusion(float value) {
-        m_immOcculusion = value;
-        setupMaterialDescriptor();
+    bool UE4SurfaceMaterial::get(const char* paramName, ShaderNodePlug* plug) const {
+        if (plug == nullptr)
+            return false;
+
+        if (testParamName(paramName, "base color")) {
+            *plug = m_nodeBaseColor;
+        }
+        else if (testParamName(paramName, "occlusion/roughness/metallic")) {
+            *plug = m_nodeOcclusionRoughnessMetallic;
+        }
+        else {
+            return false;
+        }
+
+        return true;
     }
 
-    void UE4SurfaceMaterial::setRoughness(float value) {
-        m_immRoughness = value;
+    bool UE4SurfaceMaterial::set(const char* paramName, const float* values, uint32_t length) {
+        if (testParamName(paramName, "occlusion")) {
+            if (length != 1)
+                return false;
+
+            m_immOcculusion = values[0];
+        }
+        else if (testParamName(paramName, "roughness")) {
+            if (length != 1)
+                return false;
+
+            m_immRoughness = values[0];
+        }
+        else if (testParamName(paramName, "metallic")) {
+            if (length != 1)
+                return false;
+
+            m_immMetallic = values[0];
+        }
+        else {
+            return false;
+        }
         setupMaterialDescriptor();
+
+        return true;
     }
 
-    void UE4SurfaceMaterial::setMetallic(float value) {
-        m_immMetallic = value;
+    bool UE4SurfaceMaterial::set(const char* paramName, const ImmediateSpectrum& spectrum) {
+        if (testParamName(paramName, "base color")) {
+            m_immBaseColor = spectrum;
+        }
+        else {
+            return false;
+        }
         setupMaterialDescriptor();
+
+        return true;
+    }
+
+    bool UE4SurfaceMaterial::set(const char* paramName, const ShaderNodePlug& plug) {
+        if (testParamName(paramName, "base color")) {
+            if (!Shared::NodeTypeInfo<SampledSpectrum>::ConversionIsDefinedFrom(plug.getType()))
+                return false;
+
+            m_nodeBaseColor = plug;
+        }
+        else if (testParamName(paramName, "occlusion/roughness/metallic")) {
+            if (!Shared::NodeTypeInfo<optix::float3>::ConversionIsDefinedFrom(plug.getType()))
+                return false;
+
+            m_nodeOcclusionRoughnessMetallic = plug;
+        }
+        else {
+            return false;
+        }
+        setupMaterialDescriptor();
+
+        return true;
     }
 
 
 
+    std::vector<ParameterInfo> OldStyleSurfaceMaterial::ParameterInfos;
+    
     std::map<uint32_t, SurfaceMaterial::OptiXProgramSet> OldStyleSurfaceMaterial::OptiXProgramSets;
 
     // static
     void OldStyleSurfaceMaterial::initialize(Context &context) {
+        const ParameterInfo paramInfos[] = {
+            ParameterInfo("diffuse", VLRParameterFormFlag_Both, ParameterSpectrum),
+            ParameterInfo("specular", VLRParameterFormFlag_Both, ParameterSpectrum),
+            ParameterInfo("glossiness", VLRParameterFormFlag_Both, ParameterFloat),
+        };
+
+        if (ParameterInfos.size() == 0) {
+            ParameterInfos.resize(lengthof(paramInfos));
+            std::copy_n(paramInfos, lengthof(paramInfos), ParameterInfos.data());
+        }
+
         const char* identifiers[] = {
             "VLR::OldStyleSurfaceMaterial_setupBSDF",
             "VLR::DiffuseAndSpecularBRDF_getBaseColor",
@@ -817,12 +1400,13 @@ namespace VLR {
     void OldStyleSurfaceMaterial::finalize(Context &context) {
         OptiXProgramSet &programSet = OptiXProgramSets.at(context.getID());
         commonFinalizeProcedure(context, programSet);
+        OptiXProgramSets.erase(context.getID());
     }
 
     OldStyleSurfaceMaterial::OldStyleSurfaceMaterial(Context &context) :
         SurfaceMaterial(context),
-        m_immDiffuseColor(createTripletSpectrum(SpectrumType::Reflectance, ColorSpace::Rec709_D65, 0.18f, 0.18f, 0.18f)),
-        m_immSpecularColor(createTripletSpectrum(SpectrumType::Reflectance, ColorSpace::Rec709_D65, 0.04f, 0.04f, 0.04f)),
+        m_immDiffuseColor(ColorSpace::Rec709_D65, 0.18f, 0.18f, 0.18f),
+        m_immSpecularColor(ColorSpace::Rec709_D65, 0.04f, 0.04f, 0.04f),
         m_immGlossiness(0.6f) {
         setupMaterialDescriptor();
     }
@@ -839,58 +1423,142 @@ namespace VLR {
         mat.nodeDiffuseColor = m_nodeDiffuseColor.getSharedType();
         mat.nodeSpecularColor = m_nodeSpecularColor.getSharedType();
         mat.nodeGlossiness = m_nodeGlossiness.getSharedType();
-        mat.immDiffuseColor = m_immDiffuseColor;
-        mat.immSpecularColor = m_immSpecularColor;
+        mat.immDiffuseColor = m_immDiffuseColor.createTripletSpectrum(SpectrumType::Reflectance);
+        mat.immSpecularColor = m_immSpecularColor.createTripletSpectrum(SpectrumType::Reflectance);
         mat.immGlossiness = m_immGlossiness;
 
         m_context.updateSurfaceMaterialDescriptor(m_matIndex, matDesc);
     }
 
-    bool OldStyleSurfaceMaterial::setDiffuseColor(const ShaderNodeSocket &outputSocket) {
-        if (!Shared::NodeTypeInfo<SampledSpectrum>::ConversionIsDefinedFor(outputSocket.getType()))
+    bool OldStyleSurfaceMaterial::get(const char* paramName, float* values, uint32_t length) const {
+        if (values == nullptr)
             return false;
-        m_nodeDiffuseColor = outputSocket;
-        setupMaterialDescriptor();
+
+        if (testParamName(paramName, "glossiness")) {
+            if (length != 1)
+                return false;
+
+            values[0] = m_immGlossiness;
+        }
+        else {
+            return false;
+        }
+
         return true;
     }
 
-    void OldStyleSurfaceMaterial::setDiffuseColor(ColorSpace colorSpace, float e0, float e1, float e2) {
-        m_immDiffuseColor = createTripletSpectrum(SpectrumType::Reflectance, colorSpace, e0, e1, e2);
-        setupMaterialDescriptor();
-    }
-
-    bool OldStyleSurfaceMaterial::setSpecularColor(const ShaderNodeSocket &outputSocket) {
-        if (!Shared::NodeTypeInfo<SampledSpectrum>::ConversionIsDefinedFor(outputSocket.getType()))
+    bool OldStyleSurfaceMaterial::get(const char* paramName, ImmediateSpectrum* spectrum) const {
+        if (spectrum == nullptr)
             return false;
-        m_nodeSpecularColor = outputSocket;
-        setupMaterialDescriptor();
+
+        if (testParamName(paramName, "diffuse")) {
+            *spectrum = m_immDiffuseColor;
+        }
+        else if (testParamName(paramName, "specular")) {
+            *spectrum = m_immSpecularColor;
+        }
+        else {
+            return false;
+        }
+
         return true;
     }
 
-    void OldStyleSurfaceMaterial::setSpecularColor(ColorSpace colorSpace, float e0, float e1, float e2) {
-        m_immSpecularColor = createTripletSpectrum(SpectrumType::Reflectance, colorSpace, e0, e1, e2);
-        setupMaterialDescriptor();
-    }
-
-    bool OldStyleSurfaceMaterial::setGlossiness(const ShaderNodeSocket &outputSocket) {
-        if (!Shared::NodeTypeInfo<float>::ConversionIsDefinedFor(outputSocket.getType()))
+    bool OldStyleSurfaceMaterial::get(const char* paramName, ShaderNodePlug* plug) const {
+        if (plug == nullptr)
             return false;
-        m_nodeGlossiness = outputSocket;
-        setupMaterialDescriptor();
+
+        if (testParamName(paramName, "diffuse")) {
+            *plug = m_nodeDiffuseColor;
+        }
+        else if (testParamName(paramName, "specular")) {
+            *plug = m_nodeSpecularColor;
+        }
+        else if (testParamName(paramName, "glossiness")) {
+            *plug = m_nodeGlossiness;
+        }
+        else {
+            return false;
+        }
+
         return true;
     }
 
-    void OldStyleSurfaceMaterial::setGlossiness(float value) {
-        m_immGlossiness = value;
+    bool OldStyleSurfaceMaterial::set(const char* paramName, const float* values, uint32_t length) {
+        if (testParamName(paramName, "glossiness")) {
+            if (length != 1)
+                return false;
+
+            m_immGlossiness = values[0];
+        }
+        else {
+            return false;
+        }
         setupMaterialDescriptor();
+
+        return true;
+    }
+
+    bool OldStyleSurfaceMaterial::set(const char* paramName, const ImmediateSpectrum& spectrum) {
+        if (testParamName(paramName, "diffuse")) {
+            m_immDiffuseColor = spectrum;
+        }
+        else if (testParamName(paramName, "specular")) {
+            m_immSpecularColor = spectrum;
+        }
+        else {
+            return false;
+        }
+        setupMaterialDescriptor();
+
+        return true;
+    }
+
+    bool OldStyleSurfaceMaterial::set(const char* paramName, const ShaderNodePlug& plug) {
+        if (testParamName(paramName, "diffuse")) {
+            if (!Shared::NodeTypeInfo<SampledSpectrum>::ConversionIsDefinedFrom(plug.getType()))
+                return false;
+
+            m_nodeDiffuseColor = plug;
+        }
+        else if (testParamName(paramName, "specular")) {
+            if (!Shared::NodeTypeInfo<SampledSpectrum>::ConversionIsDefinedFrom(plug.getType()))
+                return false;
+
+            m_nodeSpecularColor = plug;
+        }
+        else if (testParamName(paramName, "glossiness")) {
+            if (!Shared::NodeTypeInfo<float>::ConversionIsDefinedFrom(plug.getType()))
+                return false;
+
+            m_nodeGlossiness = plug;
+        }
+        else {
+            return false;
+        }
+        setupMaterialDescriptor();
+
+        return true;
     }
 
 
 
+    std::vector<ParameterInfo> DiffuseEmitterSurfaceMaterial::ParameterInfos;
+    
     std::map<uint32_t, SurfaceMaterial::OptiXProgramSet> DiffuseEmitterSurfaceMaterial::OptiXProgramSets;
 
     // static
     void DiffuseEmitterSurfaceMaterial::initialize(Context &context) {
+        const ParameterInfo paramInfos[] = {
+            ParameterInfo("emittance", VLRParameterFormFlag_Both, ParameterSpectrum),
+            ParameterInfo("scale", VLRParameterFormFlag_ImmediateValue, ParameterFloat),
+        };
+
+        if (ParameterInfos.size() == 0) {
+            ParameterInfos.resize(lengthof(paramInfos));
+            std::copy_n(paramInfos, lengthof(paramInfos), ParameterInfos.data());
+        }
+
         const char* identifiers[] = {
             nullptr,
             nullptr,
@@ -913,10 +1581,11 @@ namespace VLR {
     void DiffuseEmitterSurfaceMaterial::finalize(Context &context) {
         OptiXProgramSet &programSet = OptiXProgramSets.at(context.getID());
         commonFinalizeProcedure(context, programSet);
+        OptiXProgramSets.erase(context.getID());
     }
 
     DiffuseEmitterSurfaceMaterial::DiffuseEmitterSurfaceMaterial(Context &context) :
-        SurfaceMaterial(context), m_immEmittance(createTripletSpectrum(SpectrumType::LightSource, ColorSpace::Rec709_D65, M_PI, M_PI, M_PI)), m_immScale(1.0f) {
+        SurfaceMaterial(context), m_immEmittance(ColorSpace::Rec709_D65, M_PI, M_PI, M_PI), m_immScale(1.0f) {
         setupMaterialDescriptor();
     }
 
@@ -930,36 +1599,119 @@ namespace VLR {
         setupMaterialDescriptorHead(m_context, progSet, &matDesc);
         auto &mat = *matDesc.getData<Shared::DiffuseEmitterSurfaceMaterial>();
         mat.nodeEmittance = m_nodeEmittance.getSharedType();
-        mat.immEmittance = m_immEmittance;
+        mat.immEmittance = m_immEmittance.createTripletSpectrum(SpectrumType::LightSource);
         mat.immScale = m_immScale;
 
         m_context.updateSurfaceMaterialDescriptor(m_matIndex, matDesc);
     }
 
-    bool DiffuseEmitterSurfaceMaterial::setEmittance(const ShaderNodeSocket &outputSocket) {
-        if (!Shared::NodeTypeInfo<SampledSpectrum>::ConversionIsDefinedFor(outputSocket.getType()))
+    bool DiffuseEmitterSurfaceMaterial::get(const char* paramName, float* values, uint32_t length) const {
+        if (values == nullptr)
             return false;
-        m_nodeEmittance = outputSocket;
-        setupMaterialDescriptor();
+
+        if (testParamName(paramName, "scale")) {
+            if (length != 1)
+                return false;
+
+            values[0] = m_immScale;
+        }
+        else {
+            return false;
+        }
+
         return true;
     }
 
-    void DiffuseEmitterSurfaceMaterial::setEmittance(ColorSpace colorSpace, float e0, float e1, float e2) {
-        m_immEmittance = createTripletSpectrum(SpectrumType::LightSource, colorSpace, e0, e1, e2);
-        setupMaterialDescriptor();
+    bool DiffuseEmitterSurfaceMaterial::get(const char* paramName, ImmediateSpectrum* spectrum) const {
+        if (spectrum == nullptr)
+            return false;
+
+        if (testParamName(paramName, "emittance")) {
+            *spectrum = m_immEmittance;
+        }
+        else {
+            return false;
+        }
+
+        return true;
     }
 
-    void DiffuseEmitterSurfaceMaterial::setScale(float value) {
-        m_immScale = value;
+    bool DiffuseEmitterSurfaceMaterial::get(const char* paramName, ShaderNodePlug* plug) const {
+        if (plug == nullptr)
+            return false;
+
+        if (testParamName(paramName, "emittance")) {
+            *plug = m_nodeEmittance;
+        }
+        else {
+            return false;
+        }
+
+        return true;
+    }
+
+    bool DiffuseEmitterSurfaceMaterial::set(const char* paramName, const float* values, uint32_t length) {
+        if (testParamName(paramName, "scale")) {
+            if (length != 1)
+                return false;
+
+            m_immScale = values[0];
+        }
+        else {
+            return false;
+        }
         setupMaterialDescriptor();
+
+        return true;
+    }
+
+    bool DiffuseEmitterSurfaceMaterial::set(const char* paramName, const ImmediateSpectrum& spectrum) {
+        if (testParamName(paramName, "emittance")) {
+            m_immEmittance = spectrum;
+        }
+        else {
+            return false;
+        }
+        setupMaterialDescriptor();
+
+        return true;
+    }
+
+    bool DiffuseEmitterSurfaceMaterial::set(const char* paramName, const ShaderNodePlug& plug) {
+        if (testParamName(paramName, "emittance")) {
+            if (!Shared::NodeTypeInfo<SampledSpectrum>::ConversionIsDefinedFrom(plug.getType()))
+                return false;
+
+            m_nodeEmittance = plug;
+        }
+        else {
+            return false;
+        }
+        setupMaterialDescriptor();
+
+        return true;
     }
 
 
 
+    std::vector<ParameterInfo> MultiSurfaceMaterial::ParameterInfos;
+    
     std::map<uint32_t, SurfaceMaterial::OptiXProgramSet> MultiSurfaceMaterial::OptiXProgramSets;
 
     // static
     void MultiSurfaceMaterial::initialize(Context &context) {
+        const ParameterInfo paramInfos[] = {
+            ParameterInfo("0", VLRParameterFormFlag_Node, ParameterSurfaceMaterial),
+            ParameterInfo("1", VLRParameterFormFlag_Node, ParameterSurfaceMaterial),
+            ParameterInfo("2", VLRParameterFormFlag_Node, ParameterSurfaceMaterial),
+            ParameterInfo("3", VLRParameterFormFlag_Node, ParameterSurfaceMaterial),
+        };
+
+        if (ParameterInfos.size() == 0) {
+            ParameterInfos.resize(lengthof(paramInfos));
+            std::copy_n(paramInfos, lengthof(paramInfos), ParameterInfos.data());
+        }
+
         const char* identifiers[] = {
             "VLR::MultiSurfaceMaterial_setupBSDF",
             "VLR::MultiBSDF_getBaseColor",
@@ -982,10 +1734,11 @@ namespace VLR {
     void MultiSurfaceMaterial::finalize(Context &context) {
         OptiXProgramSet &programSet = OptiXProgramSets.at(context.getID());
         commonFinalizeProcedure(context, programSet);
+        OptiXProgramSets.erase(context.getID());
     }
 
     MultiSurfaceMaterial::MultiSurfaceMaterial(Context &context) :
-        SurfaceMaterial(context), m_numSubMaterials(0) {
+        SurfaceMaterial(context) {
         std::fill_n(m_subMaterials, lengthof(m_subMaterials), nullptr);
         setupMaterialDescriptor();
     }
@@ -1010,6 +1763,50 @@ namespace VLR {
         m_context.updateSurfaceMaterialDescriptor(m_matIndex, matDesc);
     }
 
+    bool MultiSurfaceMaterial::get(const char* paramName, const SurfaceMaterial** material) const {
+        if (material == nullptr)
+            return false;
+
+        if (strcmp(paramName, "0") == 0) {
+            *material = m_subMaterials[0];
+        }
+        else if (strcmp(paramName, "1") == 0) {
+            *material = m_subMaterials[1];
+        }
+        else if (strcmp(paramName, "2") == 0) {
+            *material = m_subMaterials[2];
+        }
+        else if (strcmp(paramName, "3") == 0) {
+            *material = m_subMaterials[3];
+        }
+        else {
+            return false;
+        }
+
+        return true;
+    }
+
+    bool MultiSurfaceMaterial::set(const char* paramName, const SurfaceMaterial* material) {
+        if (strcmp(paramName, "0") == 0) {
+            m_subMaterials[0] = material;
+        }
+        else if (strcmp(paramName, "1") == 0) {
+            m_subMaterials[1] = material;
+        }
+        else if (strcmp(paramName, "2") == 0) {
+            m_subMaterials[2] = material;
+        }
+        else if (strcmp(paramName, "3") == 0) {
+            m_subMaterials[3] = material;
+        }
+        else {
+            return false;
+        }
+        setupMaterialDescriptor();
+
+        return true;
+    }
+
     bool MultiSurfaceMaterial::isEmitting() const {
         for (int i = 0; i < lengthof(m_subMaterials); ++i) {
             if (m_subMaterials[i]) {
@@ -1020,22 +1817,24 @@ namespace VLR {
         return false;
     }
 
-    void MultiSurfaceMaterial::setSubMaterial(uint32_t index, const SurfaceMaterial* mat) {
-        VLRAssert(index < lengthof(m_subMaterials), "Out of range.");
-        m_subMaterials[index] = mat;
-        m_numSubMaterials = 0;
-        for (int i = 0; i < lengthof(m_subMaterials); ++i)
-            if (m_subMaterials[i] != nullptr)
-                ++m_numSubMaterials;
-        setupMaterialDescriptor();
-    }
 
 
-
+    std::vector<ParameterInfo> EnvironmentEmitterSurfaceMaterial::ParameterInfos;
+    
     std::map<uint32_t, SurfaceMaterial::OptiXProgramSet> EnvironmentEmitterSurfaceMaterial::OptiXProgramSets;
 
     // static
     void EnvironmentEmitterSurfaceMaterial::initialize(Context &context) {
+        const ParameterInfo paramInfos[] = {
+            ParameterInfo("emittance", VLRParameterFormFlag_Both, ParameterSpectrum),
+            ParameterInfo("scale", VLRParameterFormFlag_ImmediateValue, ParameterFloat),
+        };
+
+        if (ParameterInfos.size() == 0) {
+            ParameterInfos.resize(lengthof(paramInfos));
+            std::copy_n(paramInfos, lengthof(paramInfos), ParameterInfos.data());
+        }
+
         const char* identifiers[] = {
             nullptr,
             nullptr,
@@ -1058,11 +1857,11 @@ namespace VLR {
     void EnvironmentEmitterSurfaceMaterial::finalize(Context &context) {
         OptiXProgramSet &programSet = OptiXProgramSets.at(context.getID());
         commonFinalizeProcedure(context, programSet);
+        OptiXProgramSets.erase(context.getID());
     }
 
     EnvironmentEmitterSurfaceMaterial::EnvironmentEmitterSurfaceMaterial(Context &context) :
-        SurfaceMaterial(context), m_nodeEmittanceTextured(nullptr), m_nodeEmittanceConstant(nullptr),
-        m_immEmittance(createTripletSpectrum(SpectrumType::LightSource, ColorSpace::Rec709_D65, M_PI, M_PI, M_PI)), m_immScale(1.0f) {
+        SurfaceMaterial(context), m_immEmittance(ColorSpace::Rec709_D65, M_PI, M_PI, M_PI), m_immScale(1.0f) {
         setupMaterialDescriptor();
     }
 
@@ -1076,53 +1875,109 @@ namespace VLR {
         Shared::SurfaceMaterialDescriptor matDesc;
         setupMaterialDescriptorHead(m_context, progSet, &matDesc);
         auto &mat = *matDesc.getData<Shared::EnvironmentEmitterSurfaceMaterial>();
-        VLR::ShaderNodeSocket socket;
-        if (m_nodeEmittanceTextured)
-            socket = m_nodeEmittanceTextured->getSocket(ShaderNodeSocketType::Spectrum, 0);
-        else if (m_nodeEmittanceConstant)
-            socket = m_nodeEmittanceConstant->getSocket(ShaderNodeSocketType::Spectrum, 0);
-        mat.nodeEmittance = socket.getSharedType();
-        mat.immEmittance = m_immEmittance;
+        mat.nodeEmittance = m_nodeEmittance.getSharedType();
+        mat.immEmittance = m_immEmittance.createTripletSpectrum(SpectrumType::LightSource);
         mat.immScale = m_immScale;
 
         m_context.updateSurfaceMaterialDescriptor(m_matIndex, matDesc);
     }
 
-    bool EnvironmentEmitterSurfaceMaterial::setEmittanceTextured(const EnvironmentTextureShaderNode* node) {
-        m_nodeEmittanceTextured = node;
-        setupMaterialDescriptor();
-        if (m_importanceMap.isInitialized())
-            m_importanceMap.finalize(m_context);
-        return true;
-    }
-
-    bool EnvironmentEmitterSurfaceMaterial::setEmittanceConstant(const ShaderNode* spectrumNode) {
-        VLR::ShaderNodeSocket socket = spectrumNode->getSocket(ShaderNodeSocketType::Spectrum, 0);
-        if (socket.node == nullptr)
+    bool EnvironmentEmitterSurfaceMaterial::get(const char* paramName, float* values, uint32_t length) const {
+        if (values == nullptr)
             return false;
-        m_nodeEmittanceConstant = spectrumNode;
-        setupMaterialDescriptor();
-        if (m_importanceMap.isInitialized())
-            m_importanceMap.finalize(m_context);
+
+        if (testParamName(paramName, "scale")) {
+            if (length != 1)
+                return false;
+
+            values[0] = m_immScale;
+        }
+        else {
+            return false;
+        }
+
         return true;
     }
 
-    void EnvironmentEmitterSurfaceMaterial::setEmittance(ColorSpace colorSpace, float e0, float e1, float e2) {
-        m_immEmittance = createTripletSpectrum(SpectrumType::LightSource, colorSpace, e0, e1, e2);
-        setupMaterialDescriptor();
-        if (m_importanceMap.isInitialized())
-            m_importanceMap.finalize(m_context);
+    bool EnvironmentEmitterSurfaceMaterial::get(const char* paramName, ImmediateSpectrum* spectrum) const {
+        if (spectrum == nullptr)
+            return false;
+
+        if (testParamName(paramName, "emittance")) {
+            *spectrum = m_immEmittance;
+        }
+        else {
+            return false;
+        }
+
+        return true;
     }
 
-    void EnvironmentEmitterSurfaceMaterial::setScale(float value) {
-        m_immScale = value;
+    bool EnvironmentEmitterSurfaceMaterial::get(const char* paramName, ShaderNodePlug* plug) const {
+        if (plug == nullptr)
+            return false;
+
+        if (testParamName(paramName, "emittance")) {
+            *plug = m_nodeEmittance;
+        }
+        else {
+            return false;
+        }
+
+        return true;
+    }
+
+    bool EnvironmentEmitterSurfaceMaterial::set(const char* paramName, const float* values, uint32_t length) {
+        if (testParamName(paramName, "scale")) {
+            if (length != 1)
+                return false;
+
+            m_immScale = values[0];
+        }
+        else {
+            return false;
+        }
         setupMaterialDescriptor();
+
+        return true;
+    }
+
+    bool EnvironmentEmitterSurfaceMaterial::set(const char* paramName, const ImmediateSpectrum& spectrum) {
+        if (testParamName(paramName, "emittance")) {
+            m_immEmittance = spectrum;
+            if (m_importanceMap.isInitialized())
+                m_importanceMap.finalize(m_context);
+        }
+        else {
+            return false;
+        }
+        setupMaterialDescriptor();
+
+        return true;
+    }
+
+    bool EnvironmentEmitterSurfaceMaterial::set(const char* paramName, const ShaderNodePlug& plug) {
+        if (testParamName(paramName, "emittance")) {
+            if (!Shared::NodeTypeInfo<SampledSpectrum>::ConversionIsDefinedFrom(plug.getType()))
+                return false;
+
+            m_nodeEmittance = plug;
+            if (m_importanceMap.isInitialized())
+                m_importanceMap.finalize(m_context);
+        }
+        else {
+            return false;
+        }
+        setupMaterialDescriptor();
+
+        return true;
     }
 
     const RegularConstantContinuousDistribution2D &EnvironmentEmitterSurfaceMaterial::getImportanceMap() {
         if (!m_importanceMap.isInitialized()) {
-            if (m_nodeEmittanceTextured) {
-                m_nodeEmittanceTextured->createImportanceMap(&m_importanceMap);
+            if (m_nodeEmittance.node && m_nodeEmittance.node->is<EnvironmentTextureShaderNode>()) {
+                auto node = (EnvironmentTextureShaderNode*)m_nodeEmittance.node;
+                node->createImportanceMap(&m_importanceMap);
             }
             else {
                 uint32_t mapWidth = 512;

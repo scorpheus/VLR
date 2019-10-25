@@ -1,6 +1,6 @@
 ﻿#pragma once
 
-#include "context.h"
+#include "queryable.h"
 
 namespace VLR {
     struct RGB8x3 { uint8_t r, g, b; };
@@ -17,9 +17,9 @@ namespace VLR {
 
     extern const size_t sizesOfDataFormats[(uint32_t)DataFormat::NumFormats];
 
-    uint32_t getComponentStartIndex(DataFormat dataFormat, BumpType bumpType, ShaderNodeSocketType stype, uint32_t index);
+    uint32_t getComponentStartIndex(DataFormat dataFormat, BumpType bumpType, ShaderNodePlugType ptype, uint32_t index);
 
-    class Image2D : public Object {
+    class Image2D : public Queryable {
         uint32_t m_width, m_height;
         DataFormat m_originalDataFormat;
         DataFormat m_dataFormat;
@@ -31,6 +31,9 @@ namespace VLR {
 
     public:
         VLR_DECLARE_TYPE_AWARE_CLASS_INTERFACE();
+
+        static void initialize(Context &context);
+        static void finalize(Context &context);
 
         static DataFormat getInternalFormat(DataFormat inputFormat, SpectrumType spectrumType);
 
@@ -83,11 +86,16 @@ namespace VLR {
 
 
     class LinearImage2D : public Image2D {
+        VLR_DECLARE_QUERYABLE_INTERFACE();
+
         std::vector<uint8_t> m_data;
         mutable bool m_copyDone;
 
     public:
         VLR_DECLARE_TYPE_AWARE_CLASS_INTERFACE();
+
+        static void initialize(Context &context);
+        static void finalize(Context &context);
 
         // JP: "linearData" はメモリ上のレイアウトがリニアであることを意味しており、ガンマカーブ云々を表しているのではない。
         // EN: "linearData" means data layout is linear, it doesn't mean gamma curve.
@@ -109,11 +117,16 @@ namespace VLR {
 
 
     class BlockCompressedImage2D : public Image2D {
+        VLR_DECLARE_QUERYABLE_INTERFACE();
+
         std::vector<std::vector<uint8_t>> m_data;
         mutable bool m_copyDone;
 
     public:
         VLR_DECLARE_TYPE_AWARE_CLASS_INTERFACE();
+
+        static void initialize(Context &context);
+        static void finalize(Context &context);
 
         BlockCompressedImage2D(Context &context, const uint8_t* const* data, const size_t* sizes, uint32_t mipCount, uint32_t width, uint32_t height,
                                DataFormat dataFormat, SpectrumType spectrumType, ColorSpace colorSpace);

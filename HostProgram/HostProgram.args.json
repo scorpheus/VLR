@@ -3,6 +3,10 @@
   "Id": "6430930f-4932-457f-ac9c-aed74facc5c7",
   "Items": [
     {
+      "Id": "ef680aae-1129-4f34-9da3-9621b4c4274b",
+      "Command": "--nodisplay"
+    },
+    {
       "Id": "0594cc28-c876-4c2b-81f9-eca8aaaedcb4",
       "Command": "--list"
     },
@@ -24,7 +28,7 @@
     },
     {
       "Id": "a99c0bd0-4300-45b5-b15c-8cfddf6c2e3e",
-      "Command": "-maxcallabledepth 8"
+      "Command": "--maxcallabledepth 8"
     },
     {
       "Id": "d388d70f-0e7c-4182-b62b-714ef2401f4a",

@@ -3,7 +3,47 @@
 #include "shader_nodes.h"
 
 namespace VLR {
-    class SurfaceMaterial : public Object {
+    struct ImmediateSpectrum {
+        ColorSpace colorSpace;
+        float e0;
+        float e1;
+        float e2;
+
+        ImmediateSpectrum() :
+            colorSpace(ColorSpace::Rec709_D65), e0(1.0f), e1(0.0f), e2(1.0f) {}
+        ImmediateSpectrum(ColorSpace _colorSpace, float _e0, float _e1, float _e2) :
+            colorSpace(_colorSpace), e0(_e0), e1(_e1), e2(_e2) {}
+        ImmediateSpectrum(const VLRImmediateSpectrum& spectrum) {
+            auto v = getEnumValueFromMember<ColorSpace>(spectrum.colorSpace);
+            if (v != (ColorSpace)0xFFFFFFFF) {
+                colorSpace = v;
+                e0 = spectrum.e0;
+                e1 = spectrum.e1;
+                e2 = spectrum.e2;
+            }
+            else {
+                colorSpace = ColorSpace::Rec709_D65;
+                e0 = 1.0f;
+                e1 = 0.0f;
+                e2 = 1.0f;
+            }
+        }
+        VLRImmediateSpectrum getPublicType() const {
+            VLRImmediateSpectrum ret;
+            ret.colorSpace = getEnumMemberFromValue(colorSpace);
+            ret.e0 = e0;
+            ret.e1 = e1;
+            ret.e2 = e2;
+            return ret;
+        }
+        TripletSpectrum createTripletSpectrum(SpectrumType spectrumType) const {
+            return VLR::createTripletSpectrum(spectrumType, colorSpace, e0, e1, e2);
+        }
+    };
+
+
+
+    class SurfaceMaterial : public Queryable {
     protected:
         struct OptiXProgramSet {
             optix::Program callableProgramSetupBSDF;
@@ -23,6 +63,7 @@ namespace VLR {
 
         uint32_t m_matIndex;
 
+        static std::string s_materials_ptx;
         static void commonInitializeProcedure(Context &context, const char* identifiers[10], OptiXProgramSet* programSet);
         static void commonFinalizeProcedure(Context &context, OptiXProgramSet &programSet);
         static void setupMaterialDescriptorHead(Context &context, const OptiXProgramSet &progSet, Shared::SurfaceMaterialDescriptor* matDesc);
@@ -46,10 +87,12 @@ namespace VLR {
 
 
     class MatteSurfaceMaterial : public SurfaceMaterial {
+        VLR_DECLARE_QUERYABLE_INTERFACE();
+
         static std::map<uint32_t, OptiXProgramSet> OptiXProgramSets;
 
-        ShaderNodeSocket m_nodeAlbedo;
-        TripletSpectrum m_immAlbedo;
+        ShaderNodePlug m_nodeAlbedo;
+        ImmediateSpectrum m_immAlbedo;
 
         void setupMaterialDescriptor() const;
 
@@ -62,21 +105,26 @@ namespace VLR {
         MatteSurfaceMaterial(Context &context);
         ~MatteSurfaceMaterial();
 
-        bool setAlbedo(const ShaderNodeSocket &outputSocket);
-        void setAlbedo(ColorSpace colorSpace, float e0, float e1, float e2);
+        bool get(const char* paramName, ImmediateSpectrum* spectrum) const override;
+        bool get(const char* paramName, ShaderNodePlug* plug) const override;
+
+        bool set(const char* paramName, const ImmediateSpectrum &spectrum) override;
+        bool set(const char* paramName, const ShaderNodePlug& plug) override;
     };
 
 
 
     class SpecularReflectionSurfaceMaterial : public SurfaceMaterial {
+        VLR_DECLARE_QUERYABLE_INTERFACE();
+
         static std::map<uint32_t, OptiXProgramSet> OptiXProgramSets;
 
-        ShaderNodeSocket m_nodeCoeffR;
-        ShaderNodeSocket m_nodeEta;
-        ShaderNodeSocket m_node_k;
-        TripletSpectrum m_immCoeffR;
-        TripletSpectrum m_immEta;
-        TripletSpectrum m_imm_k;
+        ShaderNodePlug m_nodeCoeff;
+        ShaderNodePlug m_nodeEta;
+        ShaderNodePlug m_node_k;
+        ImmediateSpectrum m_immCoeff;
+        ImmediateSpectrum m_immEta;
+        ImmediateSpectrum m_imm_k;
 
         void setupMaterialDescriptor() const;
 
@@ -89,25 +137,26 @@ namespace VLR {
         SpecularReflectionSurfaceMaterial(Context &context);
         ~SpecularReflectionSurfaceMaterial();
 
-        bool setCoeffR(const ShaderNodeSocket &outputSocket);
-        void setCoeffR(ColorSpace colorSpace, float e0, float e1, float e2);
-        bool setEta(const ShaderNodeSocket &outputSocket);
-        void setEta(ColorSpace colorSpace, float e0, float e1, float e2);
-        bool set_k(const ShaderNodeSocket &outputSocket);
-        void set_k(ColorSpace colorSpace, float e0, float e1, float e2);
+        bool get(const char* paramName, ImmediateSpectrum* spectrum) const override;
+        bool get(const char* paramName, ShaderNodePlug* plug) const override;
+
+        bool set(const char* paramName, const ImmediateSpectrum& spectrum) override;
+        bool set(const char* paramName, const ShaderNodePlug& plug) override;
     };
 
 
 
     class SpecularScatteringSurfaceMaterial : public SurfaceMaterial {
+        VLR_DECLARE_QUERYABLE_INTERFACE();
+
         static std::map<uint32_t, OptiXProgramSet> OptiXProgramSets;
 
-        ShaderNodeSocket m_nodeCoeff;
-        ShaderNodeSocket m_nodeEtaExt;
-        ShaderNodeSocket m_nodeEtaInt;
-        TripletSpectrum m_immCoeff;
-        TripletSpectrum m_immEtaExt;
-        TripletSpectrum m_immEtaInt;
+        ShaderNodePlug m_nodeCoeff;
+        ShaderNodePlug m_nodeEtaExt;
+        ShaderNodePlug m_nodeEtaInt;
+        ImmediateSpectrum m_immCoeff;
+        ImmediateSpectrum m_immEtaExt;
+        ImmediateSpectrum m_immEtaInt;
 
         void setupMaterialDescriptor() const;
 
@@ -120,24 +169,25 @@ namespace VLR {
         SpecularScatteringSurfaceMaterial(Context &context);
         ~SpecularScatteringSurfaceMaterial();
 
-        bool setCoeff(const ShaderNodeSocket &outputSocket);
-        void setCoeff(ColorSpace colorSpace, float e0, float e1, float e2);
-        bool setEtaExt(const ShaderNodeSocket &outputSocket);
-        void setEtaExt(ColorSpace colorSpace, float e0, float e1, float e2);
-        bool setEtaInt(const ShaderNodeSocket &outputSocket);
-        void setEtaInt(ColorSpace colorSpace, float e0, float e1, float e2);
+        bool get(const char* paramName, ImmediateSpectrum* spectrum) const override;
+        bool get(const char* paramName, ShaderNodePlug* plug) const override;
+
+        bool set(const char* paramName, const ImmediateSpectrum& spectrum) override;
+        bool set(const char* paramName, const ShaderNodePlug& plug) override;
     };
 
 
 
     class MicrofacetReflectionSurfaceMaterial : public SurfaceMaterial {
+        VLR_DECLARE_QUERYABLE_INTERFACE();
+
         static std::map<uint32_t, OptiXProgramSet> OptiXProgramSets;
 
-        ShaderNodeSocket m_nodeEta;
-        ShaderNodeSocket m_node_k;
-        ShaderNodeSocket m_nodeRoughnessAnisotropyRotation;
-        TripletSpectrum m_immEta;
-        TripletSpectrum m_imm_k;
+        ShaderNodePlug m_nodeEta;
+        ShaderNodePlug m_node_k;
+        ShaderNodePlug m_nodeRoughnessAnisotropyRotation;
+        ImmediateSpectrum m_immEta;
+        ImmediateSpectrum m_imm_k;
         float m_immRoughness;
         float m_immAnisotropy;
         float m_immRotation;
@@ -153,28 +203,29 @@ namespace VLR {
         MicrofacetReflectionSurfaceMaterial(Context &context);
         ~MicrofacetReflectionSurfaceMaterial();
 
-        bool setEta(const ShaderNodeSocket &outputSocket);
-        void setEta(ColorSpace colorSpace, float e0, float e1, float e2);
-        bool set_k(const ShaderNodeSocket &outputSocket);
-        void set_k(ColorSpace colorSpace, float e0, float e1, float e2);
-        bool setRoughnessAnisotropyRotation(const ShaderNodeSocket &outputSocket);
-        void setRoughness(float value);
-        void setAnisotropy(float value);
-        void setRotation(float value);
+        bool get(const char* paramName, float* values, uint32_t length) const override;
+        bool get(const char* paramName, ImmediateSpectrum* spectrum) const override;
+        bool get(const char* paramName, ShaderNodePlug* plug) const override;
+
+        bool set(const char* paramName, const float* values, uint32_t length) override;
+        bool set(const char* paramName, const ImmediateSpectrum &spectrum) override;
+        bool set(const char* paramName, const ShaderNodePlug& plug) override;
     };
 
 
 
     class MicrofacetScatteringSurfaceMaterial : public SurfaceMaterial {
+        VLR_DECLARE_QUERYABLE_INTERFACE();
+
         static std::map<uint32_t, OptiXProgramSet> OptiXProgramSets;
 
-        ShaderNodeSocket m_nodeCoeff;
-        ShaderNodeSocket m_nodeEtaExt;
-        ShaderNodeSocket m_nodeEtaInt;
-        ShaderNodeSocket m_nodeRoughnessAnisotropyRotation;
-        TripletSpectrum m_immCoeff;
-        TripletSpectrum m_immEtaExt;
-        TripletSpectrum m_immEtaInt;
+        ShaderNodePlug m_nodeCoeff;
+        ShaderNodePlug m_nodeEtaExt;
+        ShaderNodePlug m_nodeEtaInt;
+        ShaderNodePlug m_nodeRoughnessAnisotropyRotation;
+        ImmediateSpectrum m_immCoeff;
+        ImmediateSpectrum m_immEtaExt;
+        ImmediateSpectrum m_immEtaInt;
         float m_immRoughness;
         float m_immAnisotropy;
         float m_immRotation;
@@ -190,26 +241,25 @@ namespace VLR {
         MicrofacetScatteringSurfaceMaterial(Context &context);
         ~MicrofacetScatteringSurfaceMaterial();
 
-        bool setCoeff(const ShaderNodeSocket &outputSocket);
-        void setCoeff(ColorSpace colorSpace, float e0, float e1, float e2);
-        bool setEtaExt(const ShaderNodeSocket &outputSocket);
-        void setEtaExt(ColorSpace colorSpace, float e0, float e1, float e2);
-        bool setEtaInt(const ShaderNodeSocket &outputSocket);
-        void setEtaInt(ColorSpace colorSpace, float e0, float e1, float e2);
-        bool setRoughnessAnisotropyRotation(const ShaderNodeSocket &outputSocket);
-        void setRoughness(float value);
-        void setAnisotropy(float value);
-        void setRotation(float value);
+        bool get(const char* paramName, float* values, uint32_t length) const override;
+        bool get(const char* paramName, ImmediateSpectrum* spectrum) const override;
+        bool get(const char* paramName, ShaderNodePlug* plug) const override;
+
+        bool set(const char* paramName, const float* values, uint32_t length) override;
+        bool set(const char* paramName, const ImmediateSpectrum& spectrum) override;
+        bool set(const char* paramName, const ShaderNodePlug& plug) override;
     };
 
 
 
     class LambertianScatteringSurfaceMaterial : public SurfaceMaterial {
+        VLR_DECLARE_QUERYABLE_INTERFACE();
+
         static std::map<uint32_t, OptiXProgramSet> OptiXProgramSets;
 
-        ShaderNodeSocket m_nodeCoeff;
-        ShaderNodeSocket m_nodeF0;
-        TripletSpectrum m_immCoeff;
+        ShaderNodePlug m_nodeCoeff;
+        ShaderNodePlug m_nodeF0;
+        ImmediateSpectrum m_immCoeff;
         float m_immF0;
 
         void setupMaterialDescriptor() const;
@@ -223,20 +273,25 @@ namespace VLR {
         LambertianScatteringSurfaceMaterial(Context &context);
         ~LambertianScatteringSurfaceMaterial();
 
-        bool setCoeff(const ShaderNodeSocket &outputSocket);
-        void setCoeff(ColorSpace colorSpace, float e0, float e1, float e2);
-        bool setF0(const ShaderNodeSocket &outputSocket);
-        void setF0(float value);
+        bool get(const char* paramName, float* values, uint32_t length) const override;
+        bool get(const char* paramName, ImmediateSpectrum* spectrum) const override;
+        bool get(const char* paramName, ShaderNodePlug* plug) const override;
+
+        bool set(const char* paramName, const float* values, uint32_t length) override;
+        bool set(const char* paramName, const ImmediateSpectrum& spectrum) override;
+        bool set(const char* paramName, const ShaderNodePlug& plug) override;
     };
 
 
 
     class UE4SurfaceMaterial : public SurfaceMaterial {
+        VLR_DECLARE_QUERYABLE_INTERFACE();
+
         static std::map<uint32_t, OptiXProgramSet> OptiXProgramSets;
 
-        ShaderNodeSocket m_nodeBaseColor;
-        ShaderNodeSocket m_nodeOcclusionRoughnessMetallic;
-        TripletSpectrum m_immBaseColor;
+        ShaderNodePlug m_nodeBaseColor;
+        ShaderNodePlug m_nodeOcclusionRoughnessMetallic;
+        ImmediateSpectrum m_immBaseColor;
         float m_immOcculusion;
         float m_immRoughness;
         float m_immMetallic;
@@ -252,24 +307,27 @@ namespace VLR {
         UE4SurfaceMaterial(Context &context);
         ~UE4SurfaceMaterial();
 
-        bool setBaseColor(const ShaderNodeSocket &outputSocket);
-        void setBaseColor(ColorSpace colorSpace, float e0, float e1, float e2);
-        bool setOcclusionRoughnessMetallic(const ShaderNodeSocket &outputSocket);
-        void setOcclusion(float value);
-        void setRoughness(float value);
-        void setMetallic(float value);
+        bool get(const char* paramName, float* values, uint32_t length) const override;
+        bool get(const char* paramName, ImmediateSpectrum* spectrum) const override;
+        bool get(const char* paramName, ShaderNodePlug* plug) const override;
+
+        bool set(const char* paramName, const float* values, uint32_t length) override;
+        bool set(const char* paramName, const ImmediateSpectrum& spectrum) override;
+        bool set(const char* paramName, const ShaderNodePlug& plug) override;
     };
 
 
 
     class OldStyleSurfaceMaterial : public SurfaceMaterial {
+        VLR_DECLARE_QUERYABLE_INTERFACE();
+
         static std::map<uint32_t, OptiXProgramSet> OptiXProgramSets;
 
-        ShaderNodeSocket m_nodeDiffuseColor;
-        ShaderNodeSocket m_nodeSpecularColor;
-        ShaderNodeSocket m_nodeGlossiness;
-        TripletSpectrum m_immDiffuseColor;
-        TripletSpectrum m_immSpecularColor;
+        ShaderNodePlug m_nodeDiffuseColor;
+        ShaderNodePlug m_nodeSpecularColor;
+        ShaderNodePlug m_nodeGlossiness;
+        ImmediateSpectrum m_immDiffuseColor;
+        ImmediateSpectrum m_immSpecularColor;
         float m_immGlossiness;
 
         void setupMaterialDescriptor() const;
@@ -283,21 +341,24 @@ namespace VLR {
         OldStyleSurfaceMaterial(Context &context);
         ~OldStyleSurfaceMaterial();
 
-        bool setDiffuseColor(const ShaderNodeSocket &outputSocket);
-        void setDiffuseColor(ColorSpace colorSpace, float e0, float e1, float e2);
-        bool setSpecularColor(const ShaderNodeSocket &outputSocket);
-        void setSpecularColor(ColorSpace colorSpace, float e0, float e1, float e2);
-        bool setGlossiness(const ShaderNodeSocket &outputSocket);
-        void setGlossiness(float value);
+        bool get(const char* paramName, float* values, uint32_t length) const override;
+        bool get(const char* paramName, ImmediateSpectrum* spectrum) const override;
+        bool get(const char* paramName, ShaderNodePlug* plug) const override;
+
+        bool set(const char* paramName, const float* values, uint32_t length) override;
+        bool set(const char* paramName, const ImmediateSpectrum& spectrum) override;
+        bool set(const char* paramName, const ShaderNodePlug& plug) override;
     };
 
 
 
     class DiffuseEmitterSurfaceMaterial : public SurfaceMaterial {
+        VLR_DECLARE_QUERYABLE_INTERFACE();
+
         static std::map<uint32_t, OptiXProgramSet> OptiXProgramSets;
 
-        ShaderNodeSocket m_nodeEmittance;
-        TripletSpectrum m_immEmittance;
+        ShaderNodePlug m_nodeEmittance;
+        ImmediateSpectrum m_immEmittance;
         float m_immScale;
 
         void setupMaterialDescriptor() const;
@@ -311,20 +372,25 @@ namespace VLR {
         DiffuseEmitterSurfaceMaterial(Context &context);
         ~DiffuseEmitterSurfaceMaterial();
 
-        bool isEmitting() const override { return true; }
+        bool get(const char* paramName, float* values, uint32_t length) const override;
+        bool get(const char* paramName, ImmediateSpectrum* spectrum) const override;
+        bool get(const char* paramName, ShaderNodePlug* plug) const override;
 
-        bool setEmittance(const ShaderNodeSocket &outputSocket);
-        void setEmittance(ColorSpace colorSpace, float e0, float e1, float e2);
-        void setScale(float value);
+        bool set(const char* paramName, const float* values, uint32_t length) override;
+        bool set(const char* paramName, const ImmediateSpectrum& spectrum) override;
+        bool set(const char* paramName, const ShaderNodePlug& plug) override;
+
+        bool isEmitting() const override { return true; }
     };
 
 
 
     class MultiSurfaceMaterial : public SurfaceMaterial {
+        VLR_DECLARE_QUERYABLE_INTERFACE();
+
         static std::map<uint32_t, OptiXProgramSet> OptiXProgramSets;
 
         const SurfaceMaterial* m_subMaterials[4];
-        uint32_t m_numSubMaterials;
 
         void setupMaterialDescriptor() const;
 
@@ -337,19 +403,22 @@ namespace VLR {
         MultiSurfaceMaterial(Context &context);
         ~MultiSurfaceMaterial();
 
-        bool isEmitting() const override;
+        bool get(const char* paramName, const SurfaceMaterial** material) const override;
 
-        void setSubMaterial(uint32_t index, const SurfaceMaterial* mat);
+        bool set(const char* paramName, const SurfaceMaterial* material) override;
+
+        bool isEmitting() const override;
     };
 
 
 
     class EnvironmentEmitterSurfaceMaterial : public SurfaceMaterial {
+        VLR_DECLARE_QUERYABLE_INTERFACE();
+
         static std::map<uint32_t, OptiXProgramSet> OptiXProgramSets;
 
-        const EnvironmentTextureShaderNode* m_nodeEmittanceTextured;
-        const ShaderNode* m_nodeEmittanceConstant;
-        TripletSpectrum m_immEmittance;
+        ShaderNodePlug m_nodeEmittance;
+        ImmediateSpectrum m_immEmittance;
         RegularConstantContinuousDistribution2D m_importanceMap;
         float m_immScale;
 
@@ -364,12 +433,15 @@ namespace VLR {
         EnvironmentEmitterSurfaceMaterial(Context &context);
         ~EnvironmentEmitterSurfaceMaterial();
 
-        bool isEmitting() const override { return true; }
+        bool get(const char* paramName, float* values, uint32_t length) const override;
+        bool get(const char* paramName, ImmediateSpectrum* spectrum) const override;
+        bool get(const char* paramName, ShaderNodePlug* plug) const override;
 
-        bool setEmittanceTextured(const EnvironmentTextureShaderNode* node);
-        bool setEmittanceConstant(const ShaderNode* spectrumNode);
-        void setEmittance(ColorSpace colorSpace, float e0, float e1, float e2);
-        void setScale(float value);
+        bool set(const char* paramName, const float* values, uint32_t length) override;
+        bool set(const char* paramName, const ImmediateSpectrum& spectrum) override;
+        bool set(const char* paramName, const ShaderNodePlug& plug) override;
+
+        bool isEmitting() const override { return true; }
 
         const RegularConstantContinuousDistribution2D &getImportanceMap();
     };

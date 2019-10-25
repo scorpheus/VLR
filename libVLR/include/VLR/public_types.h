@@ -7,116 +7,32 @@
 #include <stdint.h>
 #endif
 
-enum VLRSpectrumType {
-    VLRSpectrumType_Reflectance = 0,
-    VLRSpectrumType_Transmittance = VLRSpectrumType_Reflectance,
-    VLRSpectrumType_LightSource,
-    VLRSpectrumType_IndexOfRefraction,
-    VLRSpectrumType_NA,
-    NumVLRSpectrumTypes
+enum VLRParameterFormFlag {
+    VLRParameterFormFlag_ImmediateValue = 1 << 0,
+    VLRParameterFormFlag_Node = 1 << 1,
+    VLRParameterFormFlag_Both = (VLRParameterFormFlag_ImmediateValue | VLRParameterFormFlag_Node)
 };
 
-enum VLRColorSpace {
-    VLRColorSpace_Rec709_D65_sRGBGamma = 0,
-    VLRColorSpace_Rec709_D65,
-    VLRColorSpace_XYZ,
-    VLRColorSpace_xyY,
-    NumVLRColorSpaces
+enum VLRShaderNodePlugType {
+    VLRShaderNodePlugType_float1 = 0,
+    VLRShaderNodePlugType_float2,
+    VLRShaderNodePlugType_float3,
+    VLRShaderNodePlugType_float4,
+    VLRShaderNodePlugType_Point3D,
+    VLRShaderNodePlugType_Vector3D,
+    VLRShaderNodePlugType_Normal3D,
+    VLRShaderNodePlugType_Spectrum,
+    VLRShaderNodePlugType_Alpha,
+    VLRShaderNodePlugType_TextureCoordinates,
+    NumVLRShaderNodePlugTypes
 };
 
-
-
-enum VLRDataFormat {
-    VLRDataFormat_RGB8x3 = 0,
-    VLRDataFormat_RGB_8x4,
-    VLRDataFormat_RGBA8x4,
-    VLRDataFormat_RGBA16Fx4,
-    VLRDataFormat_RGBA32Fx4,
-    VLRDataFormat_RG32Fx2,
-    VLRDataFormat_Gray32F,
-    VLRDataFormat_Gray8,
-    VLRDataFormat_GrayA8x2,
-    VLRDataFormat_BC1,
-    VLRDataFormat_BC2,
-    VLRDataFormat_BC3,
-    VLRDataFormat_BC4,
-    VLRDataFormat_BC4_Signed,
-    VLRDataFormat_BC5,
-    VLRDataFormat_BC5_Signed,
-    VLRDataFormat_BC6H,
-    VLRDataFormat_BC6H_Signed,
-    VLRDataFormat_BC7,
-    NumVLRDataFormats
-};
-
-
-
-enum VLRBumpType {
-    VLRBumpType_NormalMap_DirectX = 0,
-    VLRBumpType_NormalMap_OpenGL,
-    VLRBumpType_HeightMap,
-};
-
-
-
-enum VLRShaderNodeSocketType {
-    VLRShaderNodeSocketType_float1 = 0,
-    VLRShaderNodeSocketType_float2,
-    VLRShaderNodeSocketType_float3,
-    VLRShaderNodeSocketType_float4,
-    VLRShaderNodeSocketType_Point3D,
-    VLRShaderNodeSocketType_Vector3D,
-    VLRShaderNodeSocketType_Normal3D,
-    VLRShaderNodeSocketType_Spectrum,
-    VLRShaderNodeSocketType_Alpha,
-    VLRShaderNodeSocketType_TextureCoordinates,
-    NumVLRShaderNodeSocketTypes
-};
-
-struct VLRShaderNodeSocket {
+struct VLRShaderNodePlug {
     uintptr_t nodeRef;
     uint32_t info;
 };
 
 
-
-enum VLRTextureFilter {
-    VLRTextureFilter_Nearest = 0,
-    VLRTextureFilter_Linear,
-    VLRTextureFilter_None
-};
-
-enum VLRTextureWrapMode {
-    VLRTextureWrapMode_Repeat = 0,
-    VLRTextureWrapMode_ClampToEdge,
-    VLRTextureWrapMode_Mirror,
-    VLRTextureWrapMode_ClampToBorder,
-};
-
-
-
-enum VLRTangentType {
-    VLRTangentType_TC0Direction = 0,
-    VLRTangentType_RadialX,
-    VLRTangentType_RadialY,
-    VLRTangentType_RadialZ,
-};
-
-
-
-enum VLRTransformType {
-    VLRTransformType_Static = 0,
-};
-
-enum VLRNodeType {
-    VLRNodeType_TriangleMeshSurfaceNode = 0,
-    VLRNodeType_InternalNode,
-};
-
-enum VLRCameraType {
-    VLRCameraType_Perspective = 0,
-    VLRCameraType_Equirectangular,
-};
 
 enum VLRDebugRenderingMode {
     VLRDebugRenderingMode_BaseColor = 0,
@@ -124,7 +40,6 @@ enum VLRDebugRenderingMode {
     VLRDebugRenderingMode_ShadingTangent,
     VLRDebugRenderingMode_ShadingBitangent,
     VLRDebugRenderingMode_ShadingNormal,
-    VLRDebugRenderingMode_TC0Direction,
     VLRDebugRenderingMode_TextureCoordinates,
     VLRDebugRenderingMode_GeometricVsShadingNormal,
     VLRDebugRenderingMode_ShadingFrameLengths,
@@ -132,22 +47,20 @@ enum VLRDebugRenderingMode {
 };
 
 #if !defined(__cplusplus)
-typedef enum VLRSpectrumType VLRSpectrumType;
-typedef enum VLRColorSpace VLRColorSpace;
-typedef enum VLRDataFormat VLRDataFormat;
-typedef enum VLRBumpType VLRBumpType;
-typedef enum VLRShaderNodeSocketType VLRShaderNodeSocketType;
-typedef struct VLRShaderNodeSocket VLRShaderNodeSocket;
-typedef enum VLRTextureFilter VLRTextureFilter;
-typedef enum VLRTextureWrapMode VLRTextureWrapMode;
-typedef enum VLRTangentType VLRTangentType;
-typedef enum VLRTransformType VLRTransformType;
-typedef enum VLRNodeType VLRNodeType;
-typedef enum VLRCameraType VLRCameraType;
+typedef enum VLRParameterFormFlag VLRParameterFormFlag;
+typedef enum VLRShaderNodePlugType VLRShaderNodePlugType;
+typedef struct VLRShaderNodePlug VLRShaderNodePlug;
 typedef enum VLRDebugRenderingMode VLRDebugRenderingMode;
 #endif
 
 
+
+struct VLRImmediateSpectrum {
+    const char* colorSpace;
+    float e0;
+    float e1;
+    float e2;
+};
 
 struct VLRPoint3D {
     float x, y, z;
@@ -170,6 +83,7 @@ struct VLRQuaternion {
 };
 
 #if !defined(__cplusplus)
+typedef struct VLRImmediateSpectrum VLRImmediateSpectrum;
 typedef struct VLRPoint3D VLRPoint3D;
 typedef struct VLRNormal3D VLRNormal3D;
 typedef struct VLRVector3D VLRVector3D;
@@ -189,3 +103,31 @@ struct VLRVertex {
 #if !defined(__cplusplus)
 typedef struct VLRVertex VLRVertex;
 #endif
+
+
+
+#define VLR_PROCESS_CLASS_LIST() \
+    VLR_PROCESS_CLASS(Object); \
+ \
+    VLR_PROCESS_CLASS(ParameterInfo); \
+ \
+    VLR_PROCESS_CLASS(Queryable); \
+ \
+    VLR_PROCESS_CLASS(Image2D); \
+    VLR_PROCESS_CLASS(LinearImage2D); \
+    VLR_PROCESS_CLASS(BlockCompressedImage2D); \
+ \
+    VLR_PROCESS_CLASS(ShaderNode); \
+ \
+    VLR_PROCESS_CLASS(SurfaceMaterial); \
+ \
+    VLR_PROCESS_CLASS(Transform); \
+    VLR_PROCESS_CLASS(StaticTransform); \
+ \
+    VLR_PROCESS_CLASS(Node); \
+    VLR_PROCESS_CLASS(SurfaceNode); \
+    VLR_PROCESS_CLASS(TriangleMeshSurfaceNode); \
+    VLR_PROCESS_CLASS(InternalNode); \
+    VLR_PROCESS_CLASS(Scene); \
+ \
+    VLR_PROCESS_CLASS(Camera);

@@ -50,6 +50,8 @@ namespace VLR {
     using DiscretizedSpectrumAlwaysSpectral = DiscretizedSpectrumTemplate<float, NumStrataForStorage>;
 
 #if defined(VLR_Device)
+    // Context-scope Variables
+
 #   if SPECTRAL_UPSAMPLING_METHOD == MENG_SPECTRAL_UPSAMPLING
     rtDeclareVariable(int32_t, UpsampledSpectrum_spectrum_grid, , );
     rtDeclareVariable(int32_t, UpsampledSpectrum_spectrum_data_points, , );
@@ -164,7 +166,7 @@ namespace VLR {
 
 
 
-    enum class ShaderNodeSocketType {
+    enum class ShaderNodePlugType {
         float1 = 0,
         float2,
         float3,
@@ -176,6 +178,15 @@ namespace VLR {
         Alpha,
         TextureCoordinates,
         NumTypes
+    };
+
+
+
+    enum class TangentType {
+        TC0Direction = 0,
+        RadialX,
+        RadialY,
+        RadialZ,
     };
 
 
@@ -315,7 +326,9 @@ namespace VLR {
             Matrix4x4 m_invMatrix;
 
         public:
-            RT_FUNCTION StaticTransform(const Matrix4x4 &m = Matrix4x4::Identity()) : m_matrix(m), m_invMatrix(invert(m)) {}
+            RT_FUNCTION StaticTransform() {}
+            RT_FUNCTION StaticTransform(const Matrix4x4 &m) : m_matrix(m), m_invMatrix(invert(m)) {}
+            RT_FUNCTION StaticTransform(const Matrix4x4 &m, const Matrix4x4 &mInv) : m_matrix(m), m_invMatrix(mInv) {}
 
             RT_FUNCTION Vector3D operator*(const Vector3D &v) const { return m_matrix * v; }
             RT_FUNCTION Vector4D operator*(const Vector4D &v) const { return m_matrix * v; }
@@ -327,83 +340,72 @@ namespace VLR {
                                 m_invMatrix.m02 * n.x + m_invMatrix.m12 * n.y + m_invMatrix.m22 * n.z);
             }
 
-            RT_FUNCTION StaticTransform operator*(const Matrix4x4 &m) const { return StaticTransform(m_matrix * m); }
-            RT_FUNCTION StaticTransform operator*(const StaticTransform &t) const { return StaticTransform(m_matrix * t.m_matrix); }
-            RT_FUNCTION bool operator==(const StaticTransform &t) const { return m_matrix == t.m_matrix; }
-            RT_FUNCTION bool operator!=(const StaticTransform &t) const { return m_matrix != t.m_matrix; }
+            RT_FUNCTION Vector3D mulInv(const Vector3D& v) const { return m_invMatrix * v; }
+            RT_FUNCTION Vector4D mulInv(const Vector4D& v) const { return m_invMatrix * v; }
+            RT_FUNCTION Point3D mulInv(const Point3D& p) const { return m_invMatrix * p; }
+            RT_FUNCTION Normal3D mulInv(const Normal3D& n) const {
+                // The length of the normal is changed if the transform has scaling, so it requires normalization.
+                return Normal3D(m_matrix.m00 * n.x + m_matrix.m10 * n.y + m_matrix.m20 * n.z,
+                                m_matrix.m01 * n.x + m_matrix.m11 * n.y + m_matrix.m21 * n.z,
+                                m_matrix.m02 * n.x + m_matrix.m12 * n.y + m_matrix.m22 * n.z);
+            }
         };
 
 
 
         struct NodeProcedureSet {
-            int32_t progs[nextPowerOf2((uint32_t)ShaderNodeSocketType::NumTypes)];
+            int32_t progs[nextPowerOf2((uint32_t)ShaderNodePlugType::NumTypes)];
         };
 
 
 
-        union ShaderNodeSocket {
+        union ShaderNodePlug {
             struct {
                 unsigned int nodeType : 8;
-                unsigned int socketType : 4;
+                unsigned int plugType : 4;
                 unsigned int nodeDescIndex : 18;
                 unsigned int option : 2;
             };
             uint32_t asUInt;
 
-            RT_FUNCTION ShaderNodeSocket() {}
-            explicit constexpr ShaderNodeSocket(uint32_t ui) : asUInt(ui) {}
+            RT_FUNCTION ShaderNodePlug() {}
+            explicit constexpr ShaderNodePlug(uint32_t ui) : asUInt(ui) {}
             RT_FUNCTION bool isValid() const { return asUInt != 0xFFFFFFFF; }
 
-            static constexpr ShaderNodeSocket Invalid() { return ShaderNodeSocket(0xFFFFFFFF); }
+            static constexpr ShaderNodePlug Invalid() { return ShaderNodePlug(0xFFFFFFFF); }
         };
-        static_assert(sizeof(ShaderNodeSocket) == 4, "Unexpected Size");
+        static_assert(sizeof(ShaderNodePlug) == 4, "Unexpected Size");
 
-        struct SmallNodeDescriptor {
-#define VLR_MAX_NUM_SMALL_NODE_DESCRIPTOR_SLOTS (4)
-            uint32_t data[VLR_MAX_NUM_SMALL_NODE_DESCRIPTOR_SLOTS];
+        template <uint32_t Size>
+        struct NodeDescriptor {
+            uint32_t data[Size];
 
             template <typename T>
             RT_FUNCTION T* getData() const {
                 VLRAssert(sizeof(T) <= sizeof(data), "Too big node data.");
                 return (T*)data;
             }
+
+            RT_FUNCTION static constexpr uint32_t NumDWSlots() { return Size; }
         };
 
-        struct MediumNodeDescriptor {
-#define VLR_MAX_NUM_MEDIUM_NODE_DESCRIPTOR_SLOTS (16)
-            uint32_t data[VLR_MAX_NUM_MEDIUM_NODE_DESCRIPTOR_SLOTS];
-
-            template <typename T>
-            RT_FUNCTION T* getData() const {
-                VLRAssert(sizeof(T) <= sizeof(data), "Too big node data.");
-                return (T*)data;
-            }
-        };
-
-        struct LargeNodeDescriptor {
-#   define VLR_MAX_NUM_LARGE_NODE_DESCRIPTOR_SLOTS (64)
-            uint32_t data[VLR_MAX_NUM_LARGE_NODE_DESCRIPTOR_SLOTS];
-
-            template <typename T>
-            RT_FUNCTION T* getData() const {
-                VLRAssert(sizeof(T) <= sizeof(data), "Too big node data.");
-                return (T*)data;
-            }
-        };
+        using SmallNodeDescriptor = NodeDescriptor<4>;
+        using MediumNodeDescriptor = NodeDescriptor<16>;
+        using LargeNodeDescriptor = NodeDescriptor<64>;
 
 
 
         // ----------------------------------------------------------------
-        // JP: シェーダーノードソケット間の暗黙的な型キャストを定義する。
-        // EN: Define implicit type casting between shader node sockets.
+        // JP: シェーダーノードソケット間の暗黙的な型変換を定義する。
+        // EN: Define implicit type conversion between shader node sockets.
         
         template <typename Type>
         struct NodeTypeInfo {
             template <typename SrcType>
-            RT_FUNCTION static constexpr bool ConversionIsDefinedFor() {
+            RT_FUNCTION static constexpr bool ConversionIsDefinedFrom() {
                 return false;
             }
-            RT_FUNCTION static constexpr bool ConversionIsDefinedFor(ShaderNodeSocketType socketType);
+            RT_FUNCTION static constexpr bool ConversionIsDefinedFrom(ShaderNodePlugType plugType);
             template <typename SrcType>
             RT_FUNCTION static Type convertFrom(const SrcType &) {
                 return Type();
@@ -411,7 +413,7 @@ namespace VLR {
         };
 
 #define VLR_NODE_TYPE_INFO_DEFINE_CONVERSION(DstType, SrcType) \
-    template <> template <> HOST_INLINE constexpr bool NodeTypeInfo<DstType>::ConversionIsDefinedFor<SrcType>() { return true; } \
+    template <> template <> HOST_INLINE constexpr bool NodeTypeInfo<DstType>::ConversionIsDefinedFrom<SrcType>() { return true; } \
     template <> template <> HOST_INLINE DstType NodeTypeInfo<DstType>::convertFrom<SrcType>(const SrcType &srcValue)
 
         VLR_NODE_TYPE_INFO_DEFINE_CONVERSION(float, float) { return srcValue; }
@@ -448,28 +450,28 @@ namespace VLR {
 #undef VLR_NODE_TYPE_INFO_DEFINE_CONVERSION
 
         template <typename Type>
-        RT_FUNCTION constexpr bool NodeTypeInfo<Type>::ConversionIsDefinedFor(ShaderNodeSocketType socketType) {
-            switch (socketType) {
-            case ShaderNodeSocketType::float1:
-                return ConversionIsDefinedFor<float>();
-            case ShaderNodeSocketType::float2:
-                return ConversionIsDefinedFor<optix::float2>();
-            case ShaderNodeSocketType::float3:
-                return ConversionIsDefinedFor<optix::float3>();
-            case ShaderNodeSocketType::float4:
-                return ConversionIsDefinedFor<optix::float4>();
-            case ShaderNodeSocketType::Point3D:
-                return ConversionIsDefinedFor<Point3D>();
-            case ShaderNodeSocketType::Vector3D:
-                return ConversionIsDefinedFor<Vector3D>();
-            case ShaderNodeSocketType::Normal3D:
-                return ConversionIsDefinedFor<Normal3D>();
-            case ShaderNodeSocketType::Spectrum:
-                return ConversionIsDefinedFor<SampledSpectrum>();
-            case ShaderNodeSocketType::Alpha:
-                return ConversionIsDefinedFor<float>();
-            case ShaderNodeSocketType::TextureCoordinates:
-                return ConversionIsDefinedFor<Point3D>();
+        RT_FUNCTION constexpr bool NodeTypeInfo<Type>::ConversionIsDefinedFrom(ShaderNodePlugType plugType) {
+            switch (plugType) {
+            case ShaderNodePlugType::float1:
+                return ConversionIsDefinedFrom<float>();
+            case ShaderNodePlugType::float2:
+                return ConversionIsDefinedFrom<optix::float2>();
+            case ShaderNodePlugType::float3:
+                return ConversionIsDefinedFrom<optix::float3>();
+            case ShaderNodePlugType::float4:
+                return ConversionIsDefinedFrom<optix::float4>();
+            case ShaderNodePlugType::Point3D:
+                return ConversionIsDefinedFrom<Point3D>();
+            case ShaderNodePlugType::Vector3D:
+                return ConversionIsDefinedFrom<Vector3D>();
+            case ShaderNodePlugType::Normal3D:
+                return ConversionIsDefinedFrom<Normal3D>();
+            case ShaderNodePlugType::Spectrum:
+                return ConversionIsDefinedFrom<SampledSpectrum>();
+            case ShaderNodePlugType::Alpha:
+                return ConversionIsDefinedFrom<float>();
+            case ShaderNodePlugType::TextureCoordinates:
+                return ConversionIsDefinedFrom<Point3D>();
             default:
                 VLRAssert_ShouldNotBeCalled();
                 break;
@@ -477,7 +479,7 @@ namespace VLR {
             return false;
         }
 
-        // END: Define implicit type casting between shader node sockets.
+        // END: Define implicit type conversion between shader node sockets.
         // ----------------------------------------------------------------
 
 
@@ -519,24 +521,23 @@ namespace VLR {
             uint32_t index0, index1, index2;
         };
 
-        struct SurfaceLightDescriptor {
+        struct GeometryInstanceDescriptor {
             union Body {
                 struct {
                     rtBufferId<Vertex> vertexBuffer;
                     rtBufferId<Triangle> triangleBuffer;
-                    uint32_t materialIndex;
                     DiscreteDistribution1D primDistribution;
                     StaticTransform transform;
-                } asMeshLight;
+                } asTriMesh;
                 struct {
-                    uint32_t materialIndex;
                     float rotationPhi;
                     RegularConstantContinuousDistribution2D importanceMap;
-                } asEnvironmentLight;
+                } asInfSphere;
 
                 RT_FUNCTION Body() {}
                 RT_FUNCTION ~Body() {}
             } body;
+            uint32_t materialIndex;
             float importance;
             int32_t sampleFunc;
         };
@@ -604,7 +605,6 @@ namespace VLR {
             ShadingTangent,
             ShadingBitangent,
             ShadingNormal,
-            TC0Direction,
             TextureCoordinates,
             GeometricVsShadingNormal,
             ShadingFrameLengths,
@@ -614,49 +614,42 @@ namespace VLR {
 
 
 
-        enum class TangentType {
-            TC0Direction = 0,
-            RadialX,
-            RadialY,
-            RadialZ,
-            NumTypes
-        };
-
-
-
         // ----------------------------------------------------------------
         // Shader Nodes
 
         struct GeometryShaderNode {
+        };
 
+        struct TangentShaderNode {
+            TangentType tangentType;
         };
 
         struct FloatShaderNode {
-            ShaderNodeSocket node0;
+            ShaderNodePlug node0;
             float imm0;
         };
 
         struct Float2ShaderNode {
-            ShaderNodeSocket node0;
-            ShaderNodeSocket node1;
+            ShaderNodePlug node0;
+            ShaderNodePlug node1;
             float imm0;
             float imm1;
         };
 
         struct Float3ShaderNode {
-            ShaderNodeSocket node0;
-            ShaderNodeSocket node1;
-            ShaderNodeSocket node2;
+            ShaderNodePlug node0;
+            ShaderNodePlug node1;
+            ShaderNodePlug node2;
             float imm0;
             float imm1;
             float imm2;
         };
 
         struct Float4ShaderNode {
-            ShaderNodeSocket node0;
-            ShaderNodeSocket node1;
-            ShaderNodeSocket node2;
-            ShaderNodeSocket node3;
+            ShaderNodePlug node0;
+            ShaderNodePlug node1;
+            ShaderNodePlug node2;
+            ShaderNodePlug node3;
             float imm0;
             float imm1;
             float imm2;
@@ -664,9 +657,9 @@ namespace VLR {
         };
 
         struct ScaleAndOffsetFloatShaderNode {
-            ShaderNodeSocket nodeValue;
-            ShaderNodeSocket nodeScale;
-            ShaderNodeSocket nodeOffset;
+            ShaderNodePlug nodeValue;
+            ShaderNodePlug nodeScale;
+            ShaderNodePlug nodeOffset;
             float immScale;
             float immOffset;
         };
@@ -679,15 +672,20 @@ namespace VLR {
         struct RegularSampledSpectrumShaderNode {
             float minLambda;
             float maxLambda;
-            float values[VLR_MAX_NUM_LARGE_NODE_DESCRIPTOR_SLOTS - 3];
+            float values[LargeNodeDescriptor::NumDWSlots() - 3];
             uint32_t numSamples;
         };
+        static_assert(sizeof(RegularSampledSpectrumShaderNode) == LargeNodeDescriptor::NumDWSlots() * 4,
+                      "sizeof(RegularSampledSpectrumShaderNode) must match the size of LargeNodeDescriptor.");
 
         struct IrregularSampledSpectrumShaderNode {
-            float lambdas[(VLR_MAX_NUM_LARGE_NODE_DESCRIPTOR_SLOTS - 1) / 2];
-            float values[(VLR_MAX_NUM_LARGE_NODE_DESCRIPTOR_SLOTS - 1) / 2];
+            float lambdas[(LargeNodeDescriptor::NumDWSlots() - 1) / 2];
+            float values[(LargeNodeDescriptor::NumDWSlots() - 1) / 2];
             uint32_t numSamples;
+            uint32_t dummy;
         };
+        static_assert(sizeof(IrregularSampledSpectrumShaderNode) == LargeNodeDescriptor::NumDWSlots() * 4,
+                      "sizeof(IrregularSampledSpectrumShaderNode) must match the size of LargeNodeDescriptor.");
 #else
         struct TripletSpectrumShaderNode {
             RGBSpectrum value;
@@ -703,7 +701,7 @@ namespace VLR {
 #endif
 
         struct Float3ToSpectrumShaderNode {
-            ShaderNodeSocket nodeFloat3;
+            ShaderNodePlug nodeFloat3;
             float immFloat3[3];
             SpectrumType spectrumType;
             ColorSpace colorSpace;
@@ -715,19 +713,26 @@ namespace VLR {
         };
 
         struct Image2DTextureShaderNode {
+#define VLR_IMAGE2D_TEXTURE_SHADER_NODE_BUMP_COEFF_BITWIDTH (5)
+
             int32_t textureID;
             struct {
                 unsigned int dataFormat : 5;
                 unsigned int spectrumType : 3;
                 unsigned int colorSpace : 3;
                 unsigned int bumpType : 2;
+                unsigned int bumpCoeff : VLR_IMAGE2D_TEXTURE_SHADER_NODE_BUMP_COEFF_BITWIDTH;
             };
-            ShaderNodeSocket nodeTexCoord;
+            ShaderNodePlug nodeTexCoord;
 
             RT_FUNCTION DataFormat getDataFormat() const { return DataFormat(dataFormat); }
             RT_FUNCTION SpectrumType getSpectrumType() const { return SpectrumType(spectrumType); }
             RT_FUNCTION ColorSpace getColorSpace() const { return ColorSpace(colorSpace); }
             RT_FUNCTION BumpType getBumpType() const { return BumpType(bumpType); }
+            RT_FUNCTION float getBumpCoeff() const {
+                // map to (0, 2]
+                return (float)(bumpCoeff + 1) / (1 << (VLR_IMAGE2D_TEXTURE_SHADER_NODE_BUMP_COEFF_BITWIDTH - 1));
+            }
         };
         static_assert(sizeof(Image2DTextureShaderNode) == 12, "Unexpected sizeof(Image2DTextureShaderNode).");
 
@@ -737,7 +742,6 @@ namespace VLR {
                 unsigned int dataFormat : 5;
                 unsigned int colorSpace : 3;
             };
-            ShaderNodeSocket nodeTexCoord;
 
             RT_FUNCTION DataFormat getDataFormat() const { return DataFormat(dataFormat); }
             RT_FUNCTION ColorSpace getColorSpace() const { return ColorSpace(colorSpace); }
@@ -752,32 +756,32 @@ namespace VLR {
         // Surface Materials
 
         struct MatteSurfaceMaterial {
-            ShaderNodeSocket nodeAlbedo;
+            ShaderNodePlug nodeAlbedo;
             TripletSpectrum immAlbedo;
         };
 
         struct SpecularReflectionSurfaceMaterial {
-            ShaderNodeSocket nodeCoeffR;
-            ShaderNodeSocket nodeEta;
-            ShaderNodeSocket node_k;
+            ShaderNodePlug nodeCoeffR;
+            ShaderNodePlug nodeEta;
+            ShaderNodePlug node_k;
             TripletSpectrum immCoeffR;
             TripletSpectrum immEta;
             TripletSpectrum imm_k;
         };
 
         struct SpecularScatteringSurfaceMaterial {
-            ShaderNodeSocket nodeCoeff;
-            ShaderNodeSocket nodeEtaExt;
-            ShaderNodeSocket nodeEtaInt;
+            ShaderNodePlug nodeCoeff;
+            ShaderNodePlug nodeEtaExt;
+            ShaderNodePlug nodeEtaInt;
             TripletSpectrum immCoeff;
             TripletSpectrum immEtaExt;
             TripletSpectrum immEtaInt;
         };
 
         struct MicrofacetReflectionSurfaceMaterial {
-            ShaderNodeSocket nodeEta;
-            ShaderNodeSocket node_k;
-            ShaderNodeSocket nodeRoughnessAnisotropyRotation;
+            ShaderNodePlug nodeEta;
+            ShaderNodePlug node_k;
+            ShaderNodePlug nodeRoughnessAnisotropyRotation;
             TripletSpectrum immEta;
             TripletSpectrum imm_k;
             float immRoughness;
@@ -786,10 +790,10 @@ namespace VLR {
         };
 
         struct MicrofacetScatteringSurfaceMaterial {
-            ShaderNodeSocket nodeCoeff;
-            ShaderNodeSocket nodeEtaExt;
-            ShaderNodeSocket nodeEtaInt;
-            ShaderNodeSocket nodeRoughnessAnisotropyRotation;
+            ShaderNodePlug nodeCoeff;
+            ShaderNodePlug nodeEtaExt;
+            ShaderNodePlug nodeEtaInt;
+            ShaderNodePlug nodeRoughnessAnisotropyRotation;
             TripletSpectrum immCoeff;
             TripletSpectrum immEtaExt;
             TripletSpectrum immEtaInt;
@@ -799,15 +803,15 @@ namespace VLR {
         };
 
         struct LambertianScatteringSurfaceMaterial {
-            ShaderNodeSocket nodeCoeff;
-            ShaderNodeSocket nodeF0;
+            ShaderNodePlug nodeCoeff;
+            ShaderNodePlug nodeF0;
             TripletSpectrum immCoeff;
             float immF0;
         };
 
         struct UE4SurfaceMaterial {
-            ShaderNodeSocket nodeBaseColor;
-            ShaderNodeSocket nodeOcclusionRoughnessMetallic;
+            ShaderNodePlug nodeBaseColor;
+            ShaderNodePlug nodeOcclusionRoughnessMetallic;
             TripletSpectrum immBaseColor;
             float immOcclusion;
             float immRoughness;
@@ -815,16 +819,16 @@ namespace VLR {
         };
 
         struct OldStyleSurfaceMaterial {
-            ShaderNodeSocket nodeDiffuseColor;
-            ShaderNodeSocket nodeSpecularColor;
-            ShaderNodeSocket nodeGlossiness;
+            ShaderNodePlug nodeDiffuseColor;
+            ShaderNodePlug nodeSpecularColor;
+            ShaderNodePlug nodeGlossiness;
             TripletSpectrum immDiffuseColor;
             TripletSpectrum immSpecularColor;
             float immGlossiness;
         };
 
         struct DiffuseEmitterSurfaceMaterial {
-            ShaderNodeSocket nodeEmittance;
+            ShaderNodePlug nodeEmittance;
             TripletSpectrum immEmittance;
             float immScale;
         };
@@ -835,7 +839,7 @@ namespace VLR {
         };
 
         struct EnvironmentEmitterSurfaceMaterial {
-            ShaderNodeSocket nodeEmittance;
+            ShaderNodePlug nodeEmittance;
             TripletSpectrum immEmittance;
             float immScale;
         };

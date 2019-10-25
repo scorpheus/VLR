@@ -48,12 +48,12 @@ namespace VLR {
     };
 
     struct SurfacePoint {
+        uint32_t geometryInstanceIndex;
         Point3D position;
         Normal3D geometricNormal;
         ReferenceFrame shadingFrame;
         float u, v; // Parameters used to identify the point on a surface, not texture coordinates.
         TexCoord2D texCoord;
-        Vector3D tc0Direction;
         struct {
             bool isPoint : 1;
             bool atInfinity : 1;
@@ -227,20 +227,23 @@ namespace VLR {
         uint32_t materialIndex;
     };
 
-    typedef rtCallableProgramId<void(const SurfaceLightDescriptor::Body &, const SurfaceLightPosSample &, SurfaceLightPosQueryResult*)> ProgSigSurfaceLight_sample;
+    typedef rtCallableProgramId<void(const GeometryInstanceDescriptor::Body &, const SurfaceLightPosSample &, SurfaceLightPosQueryResult*)> ProgSigSurfaceLight_sample;
 
     class SurfaceLight {
-        SurfaceLightDescriptor::Body m_desc;
+        GeometryInstanceDescriptor::Body m_desc;
+        uint32_t m_materialIndex;
         ProgSigSurfaceLight_sample m_progSurfaceLight_sample;
 
     public:
         RT_FUNCTION SurfaceLight() {}
-        RT_FUNCTION SurfaceLight(const SurfaceLightDescriptor &desc) :
+        RT_FUNCTION SurfaceLight(const GeometryInstanceDescriptor &desc) :
             m_desc(desc.body), 
+            m_materialIndex(desc.materialIndex),
             m_progSurfaceLight_sample((ProgSigSurfaceLight_sample)desc.sampleFunc) {
         }
 
         RT_FUNCTION void sample(const SurfaceLightPosSample &posSample, SurfaceLightPosQueryResult* lpResult) /*const*/ {
+            lpResult->materialIndex = m_materialIndex;
             m_progSurfaceLight_sample(m_desc, posSample, lpResult);
         }
     };
@@ -288,35 +291,37 @@ namespace VLR {
     rtBuffer<BSDFProcedureSet, 1> pv_bsdfProcedureSetBuffer;
     rtBuffer<EDFProcedureSet, 1> pv_edfProcedureSetBuffer;
     rtBuffer<SurfaceMaterialDescriptor, 1> pv_materialDescriptorBuffer;
+    rtBuffer<GeometryInstanceDescriptor, 1> pv_geometryInstanceDescriptorBuffer;
 
 
     
     template <typename T>
-    RT_FUNCTION T calcNode(ShaderNodeSocket socket, const T &defaultValue, const SurfacePoint &surfPt, const WavelengthSamples &wls) {
-        if (socket.isValid()) {
-            int32_t programID = pv_nodeProcedureSetBuffer[socket.nodeType].progs[socket.socketType];
+    RT_FUNCTION T calcNode(ShaderNodePlug plug, const T &defaultValue,
+                           const SurfacePoint &surfPt, const WavelengthSamples &wls) {
+        if (plug.isValid()) {
+            int32_t programID = pv_nodeProcedureSetBuffer[plug.nodeType].progs[plug.plugType];
 
             bool conversionDefined = false;
             T ret = T();
 
 #define VLR_DEFINE_CASE(ReturnType, EnumName) \
     case EnumName: { \
-        using ProgSigT = rtCallableProgramId<ReturnType(const ShaderNodeSocket &, const SurfacePoint &, const WavelengthSamples &)>; \
+        using ProgSigT = rtCallableProgramId<ReturnType(const ShaderNodePlug &, const SurfacePoint &, const WavelengthSamples &)>; \
         ProgSigT program = (ProgSigT)programID; \
-        conversionDefined = NodeTypeInfo<T>::ConversionIsDefinedFor<ReturnType>(); \
-        ret = NodeTypeInfo<T>::convertFrom<ReturnType>(program(socket, surfPt, wls)); \
+        conversionDefined = NodeTypeInfo<T>::ConversionIsDefinedFrom<ReturnType>(); \
+        ret = NodeTypeInfo<T>::convertFrom<ReturnType>(program(plug, surfPt, wls)); \
         break; \
     }
-            switch ((ShaderNodeSocketType)socket.socketType) {
-                VLR_DEFINE_CASE(float, ShaderNodeSocketType::float1);
-                VLR_DEFINE_CASE(optix::float2, ShaderNodeSocketType::float2);
-                VLR_DEFINE_CASE(optix::float3, ShaderNodeSocketType::float3);
-                VLR_DEFINE_CASE(optix::float4, ShaderNodeSocketType::float4);
-                VLR_DEFINE_CASE(Point3D, ShaderNodeSocketType::Point3D);
-                VLR_DEFINE_CASE(Vector3D, ShaderNodeSocketType::Vector3D);
-                VLR_DEFINE_CASE(Normal3D, ShaderNodeSocketType::Normal3D);
-                VLR_DEFINE_CASE(float, ShaderNodeSocketType::Alpha);
-                VLR_DEFINE_CASE(Point3D, ShaderNodeSocketType::TextureCoordinates);
+            switch ((ShaderNodePlugType)plug.plugType) {
+                VLR_DEFINE_CASE(float, ShaderNodePlugType::float1);
+                VLR_DEFINE_CASE(optix::float2, ShaderNodePlugType::float2);
+                VLR_DEFINE_CASE(optix::float3, ShaderNodePlugType::float3);
+                VLR_DEFINE_CASE(optix::float4, ShaderNodePlugType::float4);
+                VLR_DEFINE_CASE(Point3D, ShaderNodePlugType::Point3D);
+                VLR_DEFINE_CASE(Vector3D, ShaderNodePlugType::Vector3D);
+                VLR_DEFINE_CASE(Normal3D, ShaderNodePlugType::Normal3D);
+                VLR_DEFINE_CASE(float, ShaderNodePlugType::Alpha);
+                VLR_DEFINE_CASE(Point3D, ShaderNodePlugType::TextureCoordinates);
             default:
                 VLRAssert_ShouldNotBeCalled();
                 break;
@@ -330,32 +335,33 @@ namespace VLR {
         return defaultValue;
     }
 
-    RT_FUNCTION SampledSpectrum calcNode(ShaderNodeSocket socket, const TripletSpectrum &defaultValue, const SurfacePoint &surfPt, const WavelengthSamples &wls) {
-        if (socket.isValid()) {
-            int32_t programID = pv_nodeProcedureSetBuffer[socket.nodeType].progs[socket.socketType];
+    RT_FUNCTION SampledSpectrum calcNode(ShaderNodePlug plug, const TripletSpectrum &defaultValue,
+                                         const SurfacePoint &surfPt, const WavelengthSamples &wls) {
+        if (plug.isValid()) {
+            int32_t programID = pv_nodeProcedureSetBuffer[plug.nodeType].progs[plug.plugType];
 
             bool conversionDefined = false;
             SampledSpectrum ret = SampledSpectrum::Zero();
 
 #define VLR_DEFINE_CASE(ReturnType, EnumName) \
     case EnumName: { \
-        using ProgSigT = rtCallableProgramId<ReturnType(const ShaderNodeSocket &, const SurfacePoint &, const WavelengthSamples &)>; \
+        using ProgSigT = rtCallableProgramId<ReturnType(const ShaderNodePlug &, const SurfacePoint &, const WavelengthSamples &)>; \
         ProgSigT program = (ProgSigT)programID; \
-        conversionDefined = NodeTypeInfo<SampledSpectrum>::ConversionIsDefinedFor<ReturnType>(); \
-        ret = NodeTypeInfo<SampledSpectrum>::convertFrom<ReturnType>(program(socket, surfPt, wls)); \
+        conversionDefined = NodeTypeInfo<SampledSpectrum>::ConversionIsDefinedFrom<ReturnType>(); \
+        ret = NodeTypeInfo<SampledSpectrum>::convertFrom<ReturnType>(program(plug, surfPt, wls)); \
         break; \
     }
-            switch ((ShaderNodeSocketType)socket.socketType) {
-                VLR_DEFINE_CASE(float, ShaderNodeSocketType::float1);
-                VLR_DEFINE_CASE(optix::float2, ShaderNodeSocketType::float2);
-                VLR_DEFINE_CASE(optix::float3, ShaderNodeSocketType::float3);
-                VLR_DEFINE_CASE(optix::float4, ShaderNodeSocketType::float4);
-                VLR_DEFINE_CASE(Point3D, ShaderNodeSocketType::Point3D);
-                VLR_DEFINE_CASE(Vector3D, ShaderNodeSocketType::Vector3D);
-                VLR_DEFINE_CASE(Normal3D, ShaderNodeSocketType::Normal3D);
-                VLR_DEFINE_CASE(SampledSpectrum, ShaderNodeSocketType::Spectrum);
-                VLR_DEFINE_CASE(float, ShaderNodeSocketType::Alpha);
-                VLR_DEFINE_CASE(Point3D, ShaderNodeSocketType::TextureCoordinates);
+            switch ((ShaderNodePlugType)plug.plugType) {
+                VLR_DEFINE_CASE(float, ShaderNodePlugType::float1);
+                VLR_DEFINE_CASE(optix::float2, ShaderNodePlugType::float2);
+                VLR_DEFINE_CASE(optix::float3, ShaderNodePlugType::float3);
+                VLR_DEFINE_CASE(optix::float4, ShaderNodePlugType::float4);
+                VLR_DEFINE_CASE(Point3D, ShaderNodePlugType::Point3D);
+                VLR_DEFINE_CASE(Vector3D, ShaderNodePlugType::Vector3D);
+                VLR_DEFINE_CASE(Normal3D, ShaderNodePlugType::Normal3D);
+                VLR_DEFINE_CASE(SampledSpectrum, ShaderNodePlugType::Spectrum);
+                VLR_DEFINE_CASE(float, ShaderNodePlugType::Alpha);
+                VLR_DEFINE_CASE(Point3D, ShaderNodePlugType::TextureCoordinates);
             default:
                 VLRAssert_ShouldNotBeCalled();
                 break;

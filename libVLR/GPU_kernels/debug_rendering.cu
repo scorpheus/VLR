@@ -49,12 +49,6 @@ namespace VLR {
                                           std::fmax(0.0f, 0.5f + 0.5f * surfPt.shadingFrame.z.y),
                                           std::fmax(0.0f, 0.5f + 0.5f * surfPt.shadingFrame.z.z));
             break;
-        case DebugRenderingAttribute::TC0Direction:
-            value = createTripletSpectrum(SpectrumType::LightSource, ColorSpace::Rec709_D65,
-                                          std::fmax(0.0f, 0.5f + 0.5f * surfPt.tc0Direction.x),
-                                          std::fmax(0.0f, 0.5f + 0.5f * surfPt.tc0Direction.y),
-                                          std::fmax(0.0f, 0.5f + 0.5f * surfPt.tc0Direction.z));
-            break;
         case DebugRenderingAttribute::TextureCoordinates:
             value = createTripletSpectrum(SpectrumType::LightSource, ColorSpace::Rec709_D65,
                                           surfPt.texCoord.u - std::floor(surfPt.texCoord.u),
@@ -166,7 +160,7 @@ namespace VLR {
         surfPt.geometricNormal = -direction;
         surfPt.u = phi;
         surfPt.v = theta;
-        phi += pv_envLightDescriptor.body.asEnvironmentLight.rotationPhi;
+        phi += pv_envLightDescriptor.body.asInfSphere.rotationPhi;
         phi = phi - std::floor(phi / (2 * M_PIf)) * 2 * M_PIf;
         surfPt.texCoord = TexCoord2D(phi / (2 * M_PIf), theta / M_PIf);
 

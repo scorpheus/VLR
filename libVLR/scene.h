@@ -9,7 +9,6 @@ namespace VLR {
 
         virtual ~Transform() {}
 
-        virtual VLRTransformType getType() const = 0;
         virtual bool isStatic() const = 0;
     };
 
@@ -24,7 +23,6 @@ namespace VLR {
 
         StaticTransform(const Matrix4x4 &m = Matrix4x4::Identity()) : m_matrix(m), m_invMatrix(invert(m)) {}
 
-        VLRTransformType getType() const override { return VLRTransformType_Static; }
         bool isStatic() const override { return true; }
 
         StaticTransform operator*(const Matrix4x4 &m) const { return StaticTransform(m_matrix * m); }
@@ -53,23 +51,55 @@ namespace VLR {
     class SHGeometryInstance;
 
     class SHGroup {
+        Context &m_context;
         optix::Group m_optixGroup;
         optix::Acceleration m_optixAcceleration;
         struct TransformStatus {
             bool hasGeometryDescendant;
+            optix::Transform transform;
+            optix::GeometryGroup geomGroup;
+            std::map<const SHGeometryInstance*, optix::GeometryInstance> geomInstances;
+
+            TransformStatus() : hasGeometryDescendant(false) {}
+            TransformStatus(TransformStatus &&v) {
+                hasGeometryDescendant = v.hasGeometryDescendant;
+                transform = v.transform;
+                geomGroup = v.geomGroup;
+                geomInstances = std::move(v.geomInstances);
+            }
+            TransformStatus &operator=(TransformStatus &&v) {
+                hasGeometryDescendant = v.hasGeometryDescendant;
+                transform = v.transform;
+                geomGroup = v.geomGroup;
+                geomInstances = std::move(v.geomInstances);
+                return *this;
+            }
         };
         std::map<const SHTransform*, TransformStatus> m_transforms;
         uint32_t m_numValidTransforms;
-        std::set<const SHGeometryGroup*> m_geomGroups;
+
+        SlotBuffer<Shared::GeometryInstanceDescriptor> m_geometryInstanceDescriptorBuffer;
+        DiscreteDistribution1D m_surfaceLightImpDist;
+        bool m_surfaceLightsAreSetup;
+
+        void createOptiXDescendants(SHTransform* transform);
+        void destroyOptiXDescendants(SHTransform* transform);
 
     public:
-        SHGroup(Context &context) : m_numValidTransforms(0) {
-            optix::Context optixContext = context.getOptiXContext();
+        SHGroup(Context &context) : m_context(context), m_numValidTransforms(0), m_surfaceLightsAreSetup(false) {
+            optix::Context optixContext = m_context.getOptiXContext();
             m_optixGroup = optixContext->createGroup();
             m_optixAcceleration = optixContext->createAcceleration("Trbvh");
             m_optixGroup->setAcceleration(m_optixAcceleration);
+
+            m_geometryInstanceDescriptorBuffer.initialize(optixContext, 65536, nullptr);
         }
         ~SHGroup() {
+            if (m_surfaceLightsAreSetup)
+                m_surfaceLightImpDist.finalize(m_context);
+
+            m_geometryInstanceDescriptorBuffer.finalize();
+
             m_optixAcceleration->destroy();
             m_optixGroup->destroy();
         }
@@ -78,19 +108,16 @@ namespace VLR {
         void removeChild(SHTransform* transform);
         void updateChild(SHTransform* transform);
 
-        void addChild(SHGeometryGroup* geomGroup);
-        void removeChild(SHGeometryGroup* geomGroup);
+        void addGeometryInstances(SHTransform* transform, std::set<const SHGeometryInstance*> geomInsts);
+        void removeGeometryInstances(SHTransform* transform, std::set<const SHGeometryInstance*> geomInsts);
 
-        const optix::Group &getOptiXObject() const {
-            return m_optixGroup;
-        }
+        void setup();
 
         void printOptiXHierarchy();
     };
 
     class SHTransform {
         std::string m_name;
-        optix::Transform m_optixTransform;
 
         StaticTransform m_transform;
         union {
@@ -99,19 +126,12 @@ namespace VLR {
         };
         bool m_childIsTransform;
 
-        void resolveTransform();
+        StaticTransform resolveTransform() const;
 
     public:
         SHTransform(const std::string &name, Context &context, const StaticTransform &transform, const SHTransform* childTransform) :
-            m_name(name), m_transform(transform), m_childTransform(childTransform), m_childIsTransform(childTransform != nullptr) {
-            optix::Context optixContext = context.getOptiXContext();
-            m_optixTransform = optixContext->createTransform();
-
-            resolveTransform();
-        }
-        ~SHTransform() {
-            m_optixTransform->destroy();
-        }
+            m_name(name), m_transform(transform), m_childTransform(childTransform), m_childIsTransform(childTransform != nullptr) {}
+        ~SHTransform() {}
 
         const std::string &getName() const { return m_name; }
         void setName(const std::string &name) {
@@ -125,32 +145,27 @@ namespace VLR {
 
         void setChild(SHGeometryGroup* geomGroup);
         bool hasGeometryDescendant(SHGeometryGroup** descendant = nullptr) const;
-
-        const optix::Transform &getOptiXObject() const {
-            return m_optixTransform;
-        }
     };
 
     class SHGeometryGroup {
-        optix::GeometryGroup m_optixGeometryGroup;
         optix::Acceleration m_optixAcceleration;
         std::set<const SHGeometryInstance*> m_instances;
 
     public:
         SHGeometryGroup(Context &context) {
             optix::Context optixContext = context.getOptiXContext();
-            m_optixGeometryGroup = optixContext->createGeometryGroup();
             m_optixAcceleration = optixContext->createAcceleration("Trbvh");
-            m_optixGeometryGroup->setAcceleration(m_optixAcceleration);
         }
         ~SHGeometryGroup() {
             m_optixAcceleration->destroy();
-            m_optixGeometryGroup->destroy();
         }
 
         void addGeometryInstance(const SHGeometryInstance* instance);
         void removeGeometryInstance(const SHGeometryInstance* instance);
         void updateGeometryInstance(const SHGeometryInstance* instance);
+        bool has(const SHGeometryInstance* instance) const {
+            return m_instances.count(instance) > 0;
+        }
         const SHGeometryInstance* getGeometryInstanceAt(uint32_t index) const {
             auto it = m_instances.cbegin();
             std::advance(it, index);
@@ -160,31 +175,74 @@ namespace VLR {
             return (uint32_t)m_instances.size();
         }
 
-        const optix::GeometryGroup &getOptiXObject() const {
-            return m_optixGeometryGroup;
+        optix::Acceleration getAcceleration() const {
+            return m_optixAcceleration;
         }
     };
 
     class SHGeometryInstance {
-        optix::GeometryInstance m_optixGeometryInstance;
-        Shared::SurfaceLightDescriptor m_surfaceLightDescriptor;
+        struct TriangleMeshProperty {
+            optix::Buffer vertexBuffer;
+            optix::Buffer triangleBuffer;
+            DiscreteDistribution1D primDist;
+            float sumImportances;
+        };
+        struct InfiniteSphereProperty {
+        };
+
+        optix::Geometry m_geometry;
+        optix::GeometryTriangles m_geometryTriangles;
+        optix::Program m_progDecodeHitPoint;
+        int32_t m_progSample;
+        optix::Material m_material;
+        uint32_t m_materialIndex;
+        float m_importance;
+        ShaderNodePlug m_nodeNormal;
+        ShaderNodePlug m_nodeTangent;
+        ShaderNodePlug m_nodeAlpha;
+        TriangleMeshProperty m_triMeshProp;
+        InfiniteSphereProperty m_infSphereProp;
+        bool m_isTriMesh;
 
     public:
-        SHGeometryInstance(Context &context, const Shared::SurfaceLightDescriptor &lightDesc) : m_surfaceLightDescriptor(lightDesc) {
-            optix::Context optixContext = context.getOptiXContext();
-            m_optixGeometryInstance = optixContext->createGeometryInstance();
+        SHGeometryInstance(const optix::Geometry &geometry, const optix::Program &progDecodeHitPoint, int32_t progSample,
+                           const optix::Material &material, uint32_t materialIndex, float importance,
+                           const ShaderNodePlug &nodeNormal, const ShaderNodePlug &nodeTangent, const ShaderNodePlug &nodeAlpha,
+                           const optix::Buffer &vertexBuffer, const optix::Buffer &triangleBuffer,
+                           const DiscreteDistribution1D &primDist, float sumImportances) :
+        m_geometry(geometry), m_progDecodeHitPoint(progDecodeHitPoint), m_progSample(progSample),
+        m_material(material), m_materialIndex(materialIndex), m_importance(importance),
+        m_nodeNormal(nodeNormal), m_nodeTangent(nodeTangent), m_nodeAlpha(nodeAlpha) {
+            m_triMeshProp.vertexBuffer = vertexBuffer;
+            m_triMeshProp.triangleBuffer = triangleBuffer;
+            m_triMeshProp.primDist = primDist;
+            m_triMeshProp.sumImportances = sumImportances;
+            m_isTriMesh = true;
         }
-        ~SHGeometryInstance() {
-            m_optixGeometryInstance->destroy();
+        SHGeometryInstance(const optix::GeometryTriangles &geometryTriangles, const optix::Program &progDecodeHitPoint, int32_t progSample,
+                           const optix::Material &material, uint32_t materialIndex, float importance,
+                           const ShaderNodePlug &nodeNormal, const ShaderNodePlug &nodeTangent, const ShaderNodePlug &nodeAlpha,
+                           const optix::Buffer &vertexBuffer, const optix::Buffer &triangleBuffer,
+                           const DiscreteDistribution1D &primDist, float sumImportances) :
+            m_geometryTriangles(geometryTriangles), m_progDecodeHitPoint(progDecodeHitPoint), m_progSample(progSample),
+            m_material(material), m_materialIndex(materialIndex), m_importance(importance),
+            m_nodeNormal(nodeNormal), m_nodeTangent(nodeTangent), m_nodeAlpha(nodeAlpha) {
+            m_triMeshProp.vertexBuffer = vertexBuffer;
+            m_triMeshProp.triangleBuffer = triangleBuffer;
+            m_triMeshProp.primDist = primDist;
+            m_triMeshProp.sumImportances = sumImportances;
+            m_isTriMesh = true;
         }
+        SHGeometryInstance(const optix::Geometry &geometry, const optix::Program &progDecodeHitPoint, int32_t progSample,
+                           const optix::Material &material, uint32_t materialIndex, float importance) :
+            m_geometry(geometry), m_progDecodeHitPoint(progDecodeHitPoint), m_progSample(progSample),
+            m_material(material), m_materialIndex(materialIndex), m_importance(importance) {
+            m_isTriMesh = false;
+        }
+        ~SHGeometryInstance() {}
 
-        void getSurfaceLightDescriptor(Shared::SurfaceLightDescriptor* lightDesc) const {
-            *lightDesc = m_surfaceLightDescriptor;
-        }
-
-        const optix::GeometryInstance &getOptiXObject() const {
-            return m_optixGeometryInstance;
-        }
+        optix::GeometryInstance createGeometryInstance(Context &context) const;
+        void createGeometryInstanceDescriptor(Shared::GeometryInstanceDescriptor* desc) const;
     };
 
     // END: Shallow Hierarchy
@@ -213,7 +271,6 @@ namespace VLR {
         virtual void setName(const std::string &name) {
             m_name = name;
         }
-        virtual VLRNodeType getType() const = 0;
 
         const std::string &getName() const {
             return m_name;
@@ -247,7 +304,6 @@ namespace VLR {
             optix::Program programIntersectTriangle; // Intersection Program
             optix::Program programCalcBBoxForTriangle; // Bounding Box Program
             optix::Program callableProgramDecodeHitPointForTriangle;
-            optix::Program callableProgramDecodeTexCoordForTriangle;
             optix::Program callableProgramSampleTriangleMesh;
         };
 
@@ -265,8 +321,9 @@ namespace VLR {
         optix::Buffer m_optixVertexBuffer;
         std::vector<OptiXGeometry> m_optixGeometries;
         std::vector<const SurfaceMaterial*> m_materials;
-        std::vector<ShaderNodeSocket> m_nodeNormals;
-        std::vector<ShaderNodeSocket> m_nodeAlphas;
+        std::vector<ShaderNodePlug> m_nodeNormals;
+        std::vector<ShaderNodePlug> m_nodeTangents;
+        std::vector<ShaderNodePlug> m_nodeAlphas;
         std::vector<SHGeometryInstance*> m_shGeometryInstances;
 
     public:
@@ -278,16 +335,12 @@ namespace VLR {
         TriangleMeshSurfaceNode(Context &context, const std::string &name);
         ~TriangleMeshSurfaceNode();
 
-        VLRNodeType getType() const override {
-            return VLRNodeType_TriangleMeshSurfaceNode;
-        }
-
         void addParent(ParentNode* parent) override;
         void removeParent(ParentNode* parent) override;
 
         void setVertices(std::vector<Vertex> &&vertices);
         void addMaterialGroup(std::vector<uint32_t> &&indices, const SurfaceMaterial* material, 
-                              const ShaderNodeSocket &nodeNormal, const ShaderNodeSocket &alpha, VLRTangentType tangentType);
+                              const ShaderNodePlug &nodeNormal, const ShaderNodePlug& nodeTangent, const ShaderNodePlug &nodeAlpha);
     };
 
 
@@ -297,7 +350,6 @@ namespace VLR {
             optix::Program programIntersectInfiniteSphere; // Intersection Program
             optix::Program programCalcBBoxForInfiniteSphere; // Bounding Box Program
             optix::Program callableProgramDecodeHitPointForInfiniteSphere;
-            optix::Program callableProgramDecodeTexCoordForInfiniteSphere;
             optix::Program callableProgramSampleInfiniteSphere;
         };
 
@@ -378,17 +430,14 @@ namespace VLR {
         virtual ~ParentNode();
 
         void setName(const std::string &name) override;
-        VLRNodeType getType() const override {
-            return VLRNodeType_InternalNode;
-        }
 
         virtual void transformAddEvent(const std::set<SHTransform*>& childDelta) = 0;
         virtual void transformRemoveEvent(const std::set<SHTransform*>& childDelta) = 0;
         virtual void transformUpdateEvent(const std::set<SHTransform*>& childDelta) = 0;
 
-        virtual void geometryAddEvent(const std::set<const SHGeometryInstance*> &childDelta) = 0;
+        void geometryAddEvent(const std::set<const SHGeometryInstance*> &childDelta);
         virtual void geometryAddEvent(const SHTransform* childTransform, const std::set<const SHGeometryInstance*>& geomInstDelta) = 0;
-        virtual void geometryRemoveEvent(const std::set<const SHGeometryInstance*> &childDelta) = 0;
+        void geometryRemoveEvent(const std::set<const SHGeometryInstance*> &childDelta);
         virtual void geometryRemoveEvent(const SHTransform* childTransform, const std::set<const SHGeometryInstance*>& geomInstDelta) = 0;
 
         virtual void setTransform(const Transform* localToWorld);
@@ -419,9 +468,7 @@ namespace VLR {
         void transformRemoveEvent(const std::set<SHTransform*>& childDelta) override;
         void transformUpdateEvent(const std::set<SHTransform*>& childDelta) override;
 
-        void geometryAddEvent(const std::set<const SHGeometryInstance*>& childDelta) override;
         void geometryAddEvent(const SHTransform* childTransform, const std::set<const SHGeometryInstance*>& geomInstDelta) override;
-        void geometryRemoveEvent(const std::set<const SHGeometryInstance*>& childDelta) override;
         void geometryRemoveEvent(const SHTransform* childTransform, const std::set<const SHGeometryInstance*>& geomInstDelta) override;
 
         void setTransform(const Transform* localToWorld) override;
@@ -434,10 +481,6 @@ namespace VLR {
 
     class RootNode : public ParentNode {
         SHGroup m_shGroup;
-        std::map<TransformAndGeometryInstance, Shared::SurfaceLightDescriptor> m_surfaceLights;
-        optix::Buffer m_optixSurfaceLightDescriptorBuffer;
-        DiscreteDistribution1D m_surfaceLightImpDist;
-        bool m_surfaceLightsAreSetup;
 
     public:
         VLR_DECLARE_TYPE_AWARE_CLASS_INTERFACE();
@@ -449,12 +492,10 @@ namespace VLR {
         void transformRemoveEvent(const std::set<SHTransform*>& childDelta) override;
         void transformUpdateEvent(const std::set<SHTransform*>& childDelta) override;
 
-        void geometryAddEvent(const std::set<const SHGeometryInstance*>& childDelta) override;
         void geometryAddEvent(const SHTransform* childTransform, const std::set<const SHGeometryInstance*>& geomInstDelta) override;
-        void geometryRemoveEvent(const std::set<const SHGeometryInstance*>& childDelta) override;
         void geometryRemoveEvent(const SHTransform* childTransform, const std::set<const SHGeometryInstance*>& geomInstDelta) override;
 
-        void set();
+        void setup();
     };
 
 
@@ -501,12 +542,22 @@ namespace VLR {
         void setEnvironment(EnvironmentEmitterSurfaceMaterial* matEnv);
         void setEnvironmentRotation(float rotationPhi);
 
-        void set();
+        void setup();
     };
 
 
 
-    class Camera : public Object {
+    class Camera : public Queryable {
+    protected:
+        struct OptiXProgramSet {
+            optix::Program callableProgramSampleLensPosition;
+            optix::Program callableProgramSampleIDF;
+        };
+
+        static std::string s_cameras_ptx;
+        static void commonInitializeProcedure(Context& context, const char* identifiers[2], OptiXProgramSet* programSet);
+        static void commonFinalizeProcedure(Context& context, OptiXProgramSet& programSet);
+
     public:
         VLR_DECLARE_TYPE_AWARE_CLASS_INTERFACE();
 
@@ -514,20 +565,16 @@ namespace VLR {
         static void finalize(Context &context);
 
         Camera(Context &context) : 
-            Object(context) {}
+            Queryable(context) {}
         virtual ~Camera() {}
 
-        virtual void set() const = 0;
-        virtual VLRCameraType getType() const = 0;
+        virtual void setup() const = 0;
     };
 
 
 
     class PerspectiveCamera : public Camera {
-        struct OptiXProgramSet {
-            optix::Program callableProgramSampleLensPosition;
-            optix::Program callableProgramSampleIDF;
-        };
+        VLR_DECLARE_QUERYABLE_INTERFACE();
 
         static std::map<uint32_t, OptiXProgramSet> OptiXProgramSets;
 
@@ -541,68 +588,21 @@ namespace VLR {
 
         PerspectiveCamera(Context &context);
 
-        void set() const override;
-        VLRCameraType getType() const override {
-            return VLRCameraType_Perspective;
-        }
+        bool get(const char* paramName, Point3D* value) const override;
+        bool get(const char* paramName, Quaternion* value) const override;
+        bool get(const char* paramName, float* values, uint32_t length) const override;
 
-        void setPosition(const Point3D &position) {
-            m_data.position = position;
-        }
-        void setOrientation(const Quaternion &orientation) {
-            m_data.orientation = orientation;
-        }
-        void setAspectRatio(float aspect) {
-            m_data.aspect = std::max(0.001f, aspect);
-            m_data.setImagePlaneArea();
-        }
-        void setSensitivity(float sensitivity) {
-            if (!std::isfinite(sensitivity))
-                sensitivity = 1.0f;
-            m_data.sensitivity = std::max(0.0f, sensitivity);
-        }
-        void setFovY(float fovY) {
-            m_data.fovY = VLR::clamp<float>(fovY, 0.0001f, M_PI * 0.999f);
-            m_data.setImagePlaneArea();
-        }
-        void setLensRadius(float lensRadius) {
-            m_data.lensRadius = std::max(0.0f, lensRadius);
-        }
-        void setObjectPlaneDistance(float distance) {
-            m_data.objPlaneDistance = std::max(0.0f, distance);
-            m_data.setImagePlaneArea();
-        }
+        bool set(const char* paramName, const Point3D &value) override;
+        bool set(const char* paramName, const Quaternion &value) override;
+        bool set(const char* paramName, const float* values, uint32_t length) override;
 
-        void getPosition(Point3D* position) const {
-            *position = m_data.position;
-        }
-        void getOrientation(Quaternion* orientation) const {
-            *orientation = m_data.orientation;
-        }
-        void getAspectRatio(float* aspect) const {
-            *aspect = m_data.aspect;
-        }
-        void getSensitivity(float* sensitivity) const {
-            *sensitivity = m_data.sensitivity;
-        }
-        void getFovY(float* fovY) const {
-            *fovY = m_data.fovY;
-        }
-        void getLensRadius(float* lensRadius) const {
-            *lensRadius = m_data.lensRadius;
-        }
-        void getObjectPlaneDistance(float* distance) const {
-            *distance = m_data.objPlaneDistance;
-        }
+        void setup() const override;
     };
 
 
 
     class EquirectangularCamera : public Camera {
-        struct OptiXProgramSet {
-            optix::Program callableProgramSampleLensPosition;
-            optix::Program callableProgramSampleIDF;
-        };
+        VLR_DECLARE_QUERYABLE_INTERFACE();
 
         static std::map<uint32_t, OptiXProgramSet> OptiXProgramSets;
 
@@ -616,39 +616,14 @@ namespace VLR {
 
         EquirectangularCamera(Context &context);
 
-        void set() const override;
-        VLRCameraType getType() const override {
-            return VLRCameraType_Equirectangular;
-        }
+        bool get(const char* paramName, Point3D* value) const override;
+        bool get(const char* paramName, Quaternion* value) const override;
+        bool get(const char* paramName, float* values, uint32_t length) const override;
 
-        void setPosition(const Point3D &position) {
-            m_data.position = position;
-        }
-        void setOrientation(const Quaternion &orientation) {
-            m_data.orientation = orientation;
-        }
-        void setSensitivity(float sensitivity) {
-            if (!std::isfinite(sensitivity))
-                sensitivity = 1.0f;
-            m_data.sensitivity = std::max(0.0f, sensitivity);
-        }
-        void setAngles(float phiAngle, float thetaAngle) {
-            m_data.phiAngle = VLR::clamp<float>(phiAngle, 0.01f, 2 * M_PI);
-            m_data.thetaAngle = VLR::clamp<float>(thetaAngle, 0.01f, M_PI);
-        }
+        bool set(const char* paramName, const Point3D& value) override;
+        bool set(const char* paramName, const Quaternion& value) override;
+        bool set(const char* paramName, const float* values, uint32_t length) override;
 
-        void getPosition(Point3D* position) const {
-            *position = m_data.position;
-        }
-        void getOrientation(Quaternion* orientation) const {
-            *orientation = m_data.orientation;
-        }
-        void getSensitivity(float* sensitivity) const {
-            *sensitivity = m_data.sensitivity;
-        }
-        void getAngles(float* phiAngle, float* thetaAngle) const {
-            *phiAngle = m_data.phiAngle;
-            *thetaAngle = m_data.thetaAngle;
-        }
+        void setup() const override;
     };
 }

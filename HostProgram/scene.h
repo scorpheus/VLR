@@ -10,18 +10,21 @@
 
 struct SurfaceMaterialAttributeTuple {
     VLRCpp::SurfaceMaterialRef material;
-    VLRCpp::ShaderNodeSocket nodeNormal;
-    VLRCpp::ShaderNodeSocket nodeAlpha;
+    VLRCpp::ShaderNodePlug nodeNormal;
+    VLRCpp::ShaderNodePlug nodeTangent;
+    VLRCpp::ShaderNodePlug nodeAlpha;
 
-    SurfaceMaterialAttributeTuple(const VLRCpp::SurfaceMaterialRef &_material, const VLRCpp::ShaderNodeSocket &_nodeNormal, const VLRCpp::ShaderNodeSocket &_nodeAlpha) :
-        material(_material), nodeNormal(_nodeNormal), nodeAlpha(_nodeAlpha) {}
+    SurfaceMaterialAttributeTuple(const VLRCpp::SurfaceMaterialRef &_material,
+                                  const VLRCpp::ShaderNodePlug &_nodeNormal,
+                                  const VLRCpp::ShaderNodePlug &_nodeTangent,
+                                  const VLRCpp::ShaderNodePlug &_nodeAlpha) :
+        material(_material), nodeNormal(_nodeNormal), nodeTangent(_nodeTangent), nodeAlpha(_nodeAlpha) {}
 };
 
 struct MeshAttributeTuple {
     bool visible;
-    VLRTangentType tangentType;
 
-    MeshAttributeTuple(bool _visible, VLRTangentType _tangentType) : visible(_visible), tangentType(_tangentType) {}
+    MeshAttributeTuple(bool _visible) : visible(_visible) {}
 };
 
 typedef SurfaceMaterialAttributeTuple(*CreateMaterialFunction)(const VLRCpp::ContextRef &context, const aiMaterial* aiMat, const std::string &);

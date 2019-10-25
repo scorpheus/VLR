@@ -45,32 +45,22 @@ namespace VLR {
         surfPt->u = param.b0;
         surfPt->v = param.b1;
         surfPt->texCoord = TexCoord2D(phi / (2 * M_PIf), theta / M_PIf);
-        //surfPt->tc0Direction = normalize(transform(RT_OBJECT_TO_WORLD, uDirection));
 
         // calculate a hypothetical area PDF value in the case where the program sample this point as light.
         *hypAreaPDF = 0;
     }
 
-    // bound
-    RT_CALLABLE_PROGRAM TexCoord2D decodeTexCoordForInfiniteSphere(const HitPointParameter &param) {
-        float phi = param.b0;
-        float theta = param.b1;
-        return TexCoord2D(phi / (2 * M_PIf), theta / M_PIf);
-    }
 
 
-
-    RT_CALLABLE_PROGRAM void sampleInfiniteSphere(const SurfaceLightDescriptor::Body &desc, const SurfaceLightPosSample &sample, SurfaceLightPosQueryResult* result) {
+    RT_CALLABLE_PROGRAM void sampleInfiniteSphere(const GeometryInstanceDescriptor::Body &desc, const SurfaceLightPosSample &sample, SurfaceLightPosQueryResult* result) {
         float u, v;
         float uvPDF;
-        desc.asEnvironmentLight.importanceMap.sample(sample.uPos[0], sample.uPos[1], &u, &v, &uvPDF);
+        desc.asInfSphere.importanceMap.sample(sample.uPos[0], sample.uPos[1], &u, &v, &uvPDF);
         float phi = 2 * M_PIf * u;
         float theta = M_PIf * v;
 
-        float posPhi = phi - desc.asEnvironmentLight.rotationPhi;
+        float posPhi = phi - desc.asInfSphere.rotationPhi;
         posPhi = posPhi - std::floor(posPhi / (2 * M_PIf)) * 2 * M_PIf;
-
-        result->materialIndex = desc.asEnvironmentLight.materialIndex;
 
         Vector3D direction = Vector3D::fromPolarYUp(posPhi, theta);
         Point3D position = Point3D(direction.x, direction.y, direction.z);

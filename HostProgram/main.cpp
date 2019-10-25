@@ -63,6 +63,13 @@ float sRGB_gamma_s(float value) {
     return 1.055f * std::pow(value, 1.0f / 2.4f) - 0.055f;
 };
 
+float sRGB_degamma_s(float value) {
+    Assert(value >= 0, "Input value must be equal to or greater than 0: %g", value);
+    if (value <= 0.04045f)
+        return value / 12.92f;
+    return std::pow((value + 0.055f) / 1.055f, 2.4f);
+};
+
 struct RGB {
     float r, g, b;
 
@@ -164,6 +171,8 @@ class HostProgram {
 
     GLFWwindow* m_window;
     float m_UIScaling;
+    ImGuiStyle m_guiStyleWithGamma;
+    ImGuiStyle m_guiStyle;
     
     uint64_t m_frameIndex;
     int32_t m_curFBWidth;
@@ -245,10 +254,10 @@ class HostProgram {
     uint32_t m_renderTargetSizeY;
     float m_brightnessCoeff;
 
-    VLRCpp::PerspectiveCameraRef m_perspectiveCamera;
-    VLRCpp::EquirectangularCameraRef m_equirectangularCamera;
+    VLRCpp::CameraRef m_perspectiveCamera;
+    VLRCpp::CameraRef m_equirectangularCamera;
     VLRCpp::CameraRef m_camera;
-    VLRCameraType m_cameraType;
+    std::string m_cameraType;
 
     VLR::Point3D m_cameraPosition;
     VLR::Quaternion m_cameraOrientation;
@@ -314,13 +323,15 @@ class HostProgram {
             "ShadingTangent",
             "ShadingBitangent",
             "ShadingNormal",
-            "TC0Direction",
             "TextureCoordinates",
             "GeometricVsShadingNormal",
             "ShadingFrameLengths",
             "ShadingFrameOrthogonality",
         };
-        m_cameraSettingsChanged |= ImGui::Checkbox("Debug Render", &m_enableDebugRendering);
+        bool rendererChanged = ImGui::Checkbox("Debug Render", &m_enableDebugRendering);
+        if (rendererChanged)
+            ImGui::GetStyle() = m_enableDebugRendering ? m_guiStyle : m_guiStyleWithGamma;
+        m_cameraSettingsChanged |= rendererChanged;
         m_cameraSettingsChanged |= ImGui::Combo("Mode", (int32_t*)& m_debugRenderingMode, debugRenderModes, lengthof(debugRenderModes));
         ImGui::SliderFloat("Brightness", &m_brightnessCoeff, 0.01f, 10.0f, "%.3f", 2.0f);
 
@@ -339,7 +350,7 @@ class HostProgram {
         const char* CameraTypeNames[] = { "Perspective", "Equirectangular" };
         m_cameraSettingsChanged |= ImGui::Combo("Camera Type", (int32_t*)& m_cameraType, CameraTypeNames, lengthof(CameraTypeNames));
 
-        if (m_cameraType == VLRCameraType_Perspective) {
+        if (m_cameraType == "PerspectiveCamera") {
             m_cameraSettingsChanged |= ImGui::SliderFloat("fov Y", &m_fovYInDeg, 1, 179, "%.3f", 2.0f);
             m_cameraSettingsChanged |= ImGui::SliderFloat("Lens Radius", &m_lensRadius, 0.0f, 0.15f, "%.3f", 1.0f);
             m_cameraSettingsChanged |= ImGui::SliderFloat("Object Plane Distance", &m_objPlaneDistance, 0.01f, 20.0f, "%.3f", 2.0f);
@@ -348,7 +359,7 @@ class HostProgram {
 
             m_camera = m_perspectiveCamera;
         }
-        else if (m_cameraType == VLRCameraType_Equirectangular) {
+        else if (m_cameraType == "EquirectangularCamera") {
             m_cameraSettingsChanged |= ImGui::SliderFloat("Phi Angle", &m_phiAngle, M_PI / 18, 2 * M_PI);
             m_cameraSettingsChanged |= ImGui::SliderFloat("Theta Angle", &m_thetaAngle, M_PI / 18, 1 * M_PI);
 
@@ -413,7 +424,7 @@ class HostProgram {
                     ImGuiTreeNodeFlags node_flags = ImGuiTreeNodeFlags_OpenOnArrow | ImGuiTreeNodeFlags_OpenOnDoubleClick;
                     if (m_selectedNodes.count(curChild))
                         node_flags |= ImGuiTreeNodeFlags_Selected;
-                    if (child->getNodeType() == VLRNodeType_InternalNode) {
+                    if (child->getType() == "InternalNode") {
                         bool nodeOpen = ImGui::TreeNodeEx((void*)(intptr_t)i, node_flags, child->getName());
                         bool mouseOnLabel = (ImGui::GetMousePos().x - ImGui::GetItemRectMin().x) > ImGui::GetTreeNodeToLabelSpacing();
                         if (ImGui::IsItemClicked() && mouseOnLabel)
@@ -450,7 +461,7 @@ class HostProgram {
                     ImGuiTreeNodeFlags node_flags = ImGuiTreeNodeFlags_OpenOnArrow | ImGuiTreeNodeFlags_OpenOnDoubleClick;
                     if (m_selectedNodes.count(curChild))
                         node_flags |= ImGuiTreeNodeFlags_Selected;
-                    if (child->getNodeType() == VLRNodeType_InternalNode) {
+                    if (child->getType() == "InternalNode") {
                         bool nodeOpen = ImGui::TreeNodeEx((void*)(intptr_t)i, node_flags, child->getName());
                         bool mouseOnLabel = (ImGui::GetMousePos().x - ImGui::GetItemRectMin().x) > ImGui::GetTreeNodeToLabelSpacing();
                         if (ImGui::IsItemClicked() && mouseOnLabel)
@@ -521,7 +532,7 @@ class HostProgram {
             }
 
             static char m_nodeName[256];
-            static VLRNodeType m_nodeType = (VLRNodeType)-1;
+            static std::string m_nodeType = "";
             static InternalNodeRef m_internalNode;
             static Vector3D m_nodeScale;
             static Vector3D m_nodeRotation;
@@ -530,12 +541,12 @@ class HostProgram {
                 size_t copySize = std::min(std::strlen(onlyOneSelectedNode->getName()), sizeof(m_nodeName) - 1);
                 std::memcpy(m_nodeName, onlyOneSelectedNode->getName(), copySize);
                 m_nodeName[copySize] = '\0';
-                m_nodeType = onlyOneSelectedNode->getNodeType();
+                m_nodeType = onlyOneSelectedNode->getType();
 
-                if (m_nodeType == VLRNodeType_InternalNode) {
+                if (m_nodeType == "InternalNode") {
                     m_internalNode = std::dynamic_pointer_cast<InternalNodeHolder>(onlyOneSelectedNode);
                     TransformRef tr = m_internalNode->getTransform();
-                    if (tr->getTransformType() == VLRTransformType_Static) {
+                    if (tr->getType() == "StaticTransform") {
                         Matrix4x4 mat, invMat;
                         auto sTr = std::dynamic_pointer_cast<StaticTransformHolder>(tr);
                         sTr->getMatrices(&mat, &invMat);
@@ -548,7 +559,7 @@ class HostProgram {
             }
             else if (m_selectedNodes.size() != 1) {
                 m_nodeName[0] = '\0';
-                m_nodeType = (VLRNodeType)-1;
+                m_nodeType = "";
             }
 
             if (onlyOneSelectedNode) {
@@ -561,7 +572,7 @@ class HostProgram {
                 ImGui::PopID();
 
                 if (m_selectedNodes.size() == 1) {
-                    if (m_nodeType == VLRNodeType_InternalNode) {
+                    if (m_nodeType == "InternalNode") {
                         // TODO: tabでフォーカスを動かしたときも編集を確定させる。
                         //       ImGuiにバグがあるっぽい？
                         bool trChanged = false;
@@ -592,41 +603,39 @@ class HostProgram {
 
 
     void setViewport(const VLRCpp::CameraRef& camera) {
-        m_cameraType = camera->getCameraType();
-        if (m_cameraType == VLRCameraType_Perspective) {
-            auto viewport = std::dynamic_pointer_cast<VLRCpp::PerspectiveCameraHolder>(camera);
+        m_cameraType = camera->getType();
+        if (m_cameraType == "PerspectiveCamera") {
+            camera->get("position", &m_cameraPosition);
+            camera->get("orientation", &m_cameraOrientation);
+            camera->get("sensitivity", &m_persSensitivity);
+            camera->get("fovy", &m_fovYInDeg);
+            camera->get("lens radius", &m_lensRadius);
+            camera->get("op distance", &m_objPlaneDistance);
 
-            viewport->getPosition(&m_cameraPosition);
-            viewport->getOrientation(&m_cameraOrientation);
-            viewport->getSensitivity(&m_persSensitivity);
-            viewport->getFovY(&m_fovYInDeg);
-            viewport->getLensRadius(&m_lensRadius);
-            viewport->getObjectPlaneDistance(&m_objPlaneDistance);
-
-            m_perspectiveCamera->setPosition(m_cameraPosition);
-            m_perspectiveCamera->setOrientation(m_cameraOrientation);
-            m_perspectiveCamera->setAspectRatio((float)m_renderTargetSizeX / m_renderTargetSizeY);
-            m_perspectiveCamera->setSensitivity(m_persSensitivity);
-            m_perspectiveCamera->setFovY(m_fovYInDeg);
-            m_perspectiveCamera->setLensRadius(m_lensRadius);
-            m_perspectiveCamera->setObjectPlaneDistance(m_objPlaneDistance);
+            m_perspectiveCamera->set("position", m_cameraPosition);
+            m_perspectiveCamera->set("orientation", m_cameraOrientation);
+            m_perspectiveCamera->set("aspect", (float)m_renderTargetSizeX / m_renderTargetSizeY);
+            m_perspectiveCamera->set("sensitivity", m_persSensitivity);
+            m_perspectiveCamera->set("fovy", m_fovYInDeg);
+            m_perspectiveCamera->set("lens radius", m_lensRadius);
+            m_perspectiveCamera->set("op distance", m_objPlaneDistance);
 
             m_fovYInDeg *= 180 / M_PI;
 
             m_camera = m_perspectiveCamera;
         }
         else {
-            auto viewport = std::dynamic_pointer_cast<VLRCpp::EquirectangularCameraHolder>(camera);
+            camera->get("position", &m_cameraPosition);
+            camera->get("orientation", &m_cameraOrientation);
+            camera->get("sensitivity", &m_equiSensitivity);
+            camera->get("h angle", &m_phiAngle);
+            camera->get("v angle", &m_thetaAngle);
 
-            viewport->getPosition(&m_cameraPosition);
-            viewport->getOrientation(&m_cameraOrientation);
-            viewport->getSensitivity(&m_equiSensitivity);
-            viewport->getAngles(&m_phiAngle, &m_thetaAngle);
-
-            m_equirectangularCamera->setPosition(m_cameraPosition);
-            m_equirectangularCamera->setOrientation(m_cameraOrientation);
-            m_equirectangularCamera->setSensitivity(m_equiSensitivity);
-            m_equirectangularCamera->setAngles(m_phiAngle, m_thetaAngle);
+            m_equirectangularCamera->set("position", m_cameraPosition);
+            m_equirectangularCamera->set("orientation", m_cameraOrientation);
+            m_equirectangularCamera->set("sensitivity", m_equiSensitivity);
+            m_equirectangularCamera->set("h angle", m_phiAngle);
+            m_equirectangularCamera->set("v angle", m_thetaAngle);
 
             m_camera = m_equirectangularCamera;
         }
@@ -790,7 +799,18 @@ public:
         ImGui_ImplOpenGL3_Init(glsl_version);
 
         // Setup style
-        ImGui::StyleColorsDark();
+        ImGui::StyleColorsDark(&m_guiStyle);
+        m_guiStyleWithGamma = m_guiStyle;
+        const auto degamma = [](const ImVec4 &color) {
+            return ImVec4(sRGB_degamma_s(color.x),
+                          sRGB_degamma_s(color.y),
+                          sRGB_degamma_s(color.z),
+                          color.w);
+        };
+        for (int i = 0; i < ImGuiCol_COUNT; ++i) {
+            m_guiStyleWithGamma.Colors[i] = degamma(m_guiStyleWithGamma.Colors[i]);
+        }
+        ImGui::GetStyle() = m_guiStyleWithGamma;
 
 
 
@@ -864,14 +884,14 @@ public:
         m_brightnessCoeff = shot.brightnessCoeff;
 
         {
-            m_perspectiveCamera = m_context->createPerspectiveCamera();
+            m_perspectiveCamera = m_context->createCamera("Perspective");
             m_persSensitivity = 1.0f;
             m_fovYInDeg = 45;
             m_lensRadius = 0.0f;
             m_objPlaneDistance = 1.0f;
         }
         {
-            m_equirectangularCamera = m_context->createEquirectangularCamera();
+            m_equirectangularCamera = m_context->createCamera("Equirectangular");
             m_equiSensitivity = 1.0f;
             m_phiAngle = 2 * M_PI;
             m_thetaAngle = M_PI;
@@ -935,7 +955,7 @@ public:
 
                 m_frameBuffer.initialize(m_renderTargetSizeX, m_renderTargetSizeY, GL_RGBA8, GL_DEPTH_COMPONENT32);
 
-                m_perspectiveCamera->setAspectRatio((float)m_renderTargetSizeX / m_renderTargetSizeY);
+                m_perspectiveCamera->set("aspect", (float)m_renderTargetSizeX / m_renderTargetSizeY);
 
                 resized = true;
             }
@@ -1025,23 +1045,24 @@ public:
                 m_sceneChanged = false;
                 showSceneWindow();
 
-                if (m_cameraType == VLRCameraType_Perspective) {
-                    m_perspectiveCamera->setPosition(m_cameraPosition);
-                    m_perspectiveCamera->setOrientation(m_tempCameraOrientation);
+                if (m_cameraType == "PerspectiveCamera") {
+                    m_perspectiveCamera->set("position", m_cameraPosition);
+                    m_perspectiveCamera->set("orientation", m_tempCameraOrientation);
                     if (m_cameraSettingsChanged) {
-                        m_perspectiveCamera->setAspectRatio((float)m_renderTargetSizeX / m_renderTargetSizeY);
-                        m_perspectiveCamera->setSensitivity(m_persSensitivity);
-                        m_perspectiveCamera->setFovY(m_fovYInDeg * M_PI / 180);
-                        m_perspectiveCamera->setLensRadius(m_lensRadius);
-                        m_perspectiveCamera->setObjectPlaneDistance(m_objPlaneDistance);
+                        m_perspectiveCamera->set("aspect", (float)m_renderTargetSizeX / m_renderTargetSizeY);
+                        m_perspectiveCamera->set("sensitivity", m_persSensitivity);
+                        m_perspectiveCamera->set("fovy", m_fovYInDeg * M_PI / 180);
+                        m_perspectiveCamera->set("lens radius", m_lensRadius);
+                        m_perspectiveCamera->set("op distance", m_objPlaneDistance);
                     }
                 }
-                else if (m_cameraType == VLRCameraType_Equirectangular) {
-                    m_equirectangularCamera->setPosition(m_cameraPosition);
-                    m_equirectangularCamera->setOrientation(m_tempCameraOrientation);
+                else if (m_cameraType == "EquirectangularCamera") {
+                    m_equirectangularCamera->set("position", m_cameraPosition);
+                    m_equirectangularCamera->set("orientation", m_tempCameraOrientation);
                     if (m_cameraSettingsChanged) {
-                        m_equirectangularCamera->setSensitivity(m_equiSensitivity);
-                        m_equirectangularCamera->setAngles(m_phiAngle, m_thetaAngle);
+                        m_equirectangularCamera->set("sensitivity", m_equiSensitivity);
+                        m_equirectangularCamera->set("h angle", m_phiAngle);
+                        m_equirectangularCamera->set("v angle", m_thetaAngle);
                     }
                 }
 
@@ -1091,7 +1112,6 @@ public:
                     m_outputTexture.unbind();
                 }
 
-                // TODO: need to rendering ImGui contents with degamma when sRGB is enabled.
                 ImGui::Render();
                 ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
 
@@ -1209,6 +1229,8 @@ static int32_t mainFunc(int32_t argc, const char* argv[]) {
 
     VLRCpp::ContextRef context = VLRCpp::Context::create(enableLogging, enableRTX, maxCallableDepth, stackSize,
                                                          deviceArray.empty() ? nullptr : deviceArray.data(), deviceArray.size());
+
+    context->enableAllExceptions();
 
     Shot shot;
     createScene(context, &shot);
