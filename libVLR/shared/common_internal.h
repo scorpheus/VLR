@@ -1,6 +1,7 @@
 ﻿#pragma once
 
 #include "common.h"
+#include <filesystem>
 
 #define VLR_ENABLE_VALIDATION
 #define VLR_ENABLE_TIMEOUT_CALLBACK
@@ -240,11 +241,7 @@ namespace VLR {
 // filesystem
 #if defined(VLR_Host)
 namespace VLR {
-#   if defined(VLR_Platform_Windows_MSVC)
-    namespace filesystem = std::experimental::filesystem;
-#   else
     namespace filesystem = std::filesystem;
-#   endif
 
     filesystem::path getExecutableDirectory();
 }

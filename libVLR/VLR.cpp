@@ -296,12 +296,12 @@ VLR_API VLRResult vlrContextGetOutputBufferSize(VLRContext context, uint32_t* wi
     VLR_RETURN_INTERNAL_ERROR();
 }
 
-VLR_API VLRResult vlrContextRender(VLRContext context, VLRScene scene, VLRCameraConst camera, uint32_t shrinkCoeff, bool firstFrame, uint32_t* numAccumFrames) {
+VLR_API VLRResult vlrContextRender(VLRContext context, VLRScene scene, VLRCameraConst camera, uint32_t shrinkCoeff, bool firstFrame, uint32_t* numAccumFrames, bool do_denoise) {
     try {
         if (!scene->is<VLR::Scene>() || !camera->isMemberOf<VLR::Camera>() || numAccumFrames == nullptr)
             return VLRResult_InvalidArgument;
 
-        context->render(*scene, camera, shrinkCoeff, firstFrame, numAccumFrames);
+        context->render(*scene, camera, shrinkCoeff, firstFrame, numAccumFrames, do_denoise);
 
         return VLRResult_NoError;
     }

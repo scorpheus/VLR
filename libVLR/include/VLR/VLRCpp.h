@@ -1304,8 +1304,8 @@ namespace VLRCpp {
             errorCheck(vlrContextGetOutputBufferSize(m_rawContext, width, height));
         }
 
-        void render(const SceneRef &scene, const CameraRef &camera, uint32_t shrinkCoeff, bool firstFrame, uint32_t* numAccumFrames) const {
-            errorCheck(vlrContextRender(m_rawContext, scene->get<VLRScene>(), camera->get<VLRCamera>(), shrinkCoeff, firstFrame, numAccumFrames));
+        void render(const SceneRef &scene, const CameraRef &camera, uint32_t shrinkCoeff, bool firstFrame, uint32_t* numAccumFrames, bool do_denoise) const {
+            errorCheck(vlrContextRender(m_rawContext, scene->get<VLRScene>(), camera->get<VLRCamera>(), shrinkCoeff, firstFrame, numAccumFrames, do_denoise));
         }
 
         void debugRender(const SceneRef &scene, const CameraRef &camera, VLRDebugRenderingMode renderMode, uint32_t shrinkCoeff, bool firstFrame, uint32_t* numAccumFrames) const {
