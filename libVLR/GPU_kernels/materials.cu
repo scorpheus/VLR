@@ -1057,7 +1057,7 @@ namespace VLR {
     struct DiffuseAndSpecularBRDF {
         SampledSpectrum diffuseColor;
         SampledSpectrum specularF0Color;
-		float roughness;
+        float roughness;
 		//SampledSpectrum albedoColor;
     };
 
@@ -1075,7 +1075,7 @@ namespace VLR {
         const float specular = 0.5f;
         p.diffuseColor = baseColor * (1 - metallic);
         p.specularF0Color = lerp(0.08f * specular * SampledSpectrum::One(), baseColor, metallic);
-		p.roughness = roughness;
+        p.roughness = roughness;
 		//p.albedoColor = baseColor;
 
         return sizeof(DiffuseAndSpecularBRDF) / 4;

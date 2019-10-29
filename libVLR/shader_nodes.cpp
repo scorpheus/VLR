@@ -1926,6 +1926,8 @@ namespace VLR {
         m_optixTextureSampler->setIndexingMode(RT_TEXTURE_INDEX_NORMALIZED_COORDINATES);
         m_optixTextureSampler->setReadMode(RT_TEXTURE_READ_NORMALIZED_FLOAT);
         m_optixTextureSampler->setMaxAnisotropy(1.0f);
+		m_minFilter = TextureFilter::Nearest;
+		m_magFilter = TextureFilter::Nearest;
 
         setupNodeDescriptor();
     }
