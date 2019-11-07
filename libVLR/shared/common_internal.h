@@ -16,7 +16,7 @@
 #include <filesystem>
 
 #define VLR_ENABLE_VALIDATION
-#define VLR_ENABLE_TIMEOUT_CALLBACK
+//#define VLR_ENABLE_TIMEOUT_CALLBACK
 
 #define VLR_Color_System_CIE_1931_2deg  0
 #define VLR_Color_System_CIE_1964_10deg 1

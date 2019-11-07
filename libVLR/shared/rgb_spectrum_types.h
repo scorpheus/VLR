@@ -160,9 +160,6 @@ namespace VLR {
             return allFinite() && !hasNegative();
         }
 
-		RT_FUNCTION void setAlpha(RealType _a) {
-			a = _a;
-		}
         // setting "primary" to 1.0 might introduce bias.
         RT_FUNCTION RealType importance(uint16_t selectedLambda) const {
             RealType sum = r + g + b;

@@ -751,7 +751,7 @@ namespace VLR {
             result->sampledType = DirectionType::Reflection() | DirectionType::HighFreq();
 
             float G = ggx.evaluateSmithG1(dirV, m) * ggx.evaluateSmithG1(dirL, m);
-            SampledSpectrum fs = F * D * G / (4 * dirV.z * dirL.z);
+            SampledSpectrum fs = p.coeff * F * D * G / (4 * dirV.z * dirL.z);
 
             //VLRAssert(fs.allFinite(), "fs: %s, F: %g, %g, %g, G, %g, D: %g, wlIdx: %u, qDir: (%g, %g, %g), rDir: (%g, %g, %g)",
             //          fs.toString().c_str(), F.toString().c_str(), G, D, query.wlHint, 
@@ -789,7 +789,7 @@ namespace VLR {
                 float F_wl = fresnel.evaluate(dotHV_wl, wlIdx);
                 float G_wl = ggx.evaluateSmithG1(dirV, m_wl) * ggx.evaluateSmithG1(dirL, m_wl);
                 float D_wl = ggx.evaluate(m_wl);
-                ret[wlIdx] = std::fabs(dotHV_wl * dotHL_wl) * (1 - F_wl) * G_wl * D_wl / std::pow(eEnter[wlIdx] * dotHV_wl + eExit[wlIdx] * dotHL_wl, 2);
+                ret[wlIdx] = std::fabs(dotHV_wl * dotHL_wl) * p.coeff[wlIdx] * (1 - F_wl) * G_wl * D_wl / std::pow(eEnter[wlIdx] * dotHV_wl + eExit[wlIdx] * dotHL_wl, 2);
 
                 //VLRAssert(std::isfinite(ret[wlIdx]), "fs: %g, F: %g, G, %g, D: %g, wlIdx: %u, qDir: %s",
                 //          ret[wlIdx], F_wl, G_wl, D_wl, query.wlHint, dirV.toString().c_str());
@@ -827,7 +827,7 @@ namespace VLR {
 
             SampledSpectrum F = fresnel.evaluate(dotHV);
             float G = ggx.evaluateSmithG1(dirV, m) * ggx.evaluateSmithG1(dirL, m);
-            SampledSpectrum fs = F * D * G / (4 * dotNVdotNL);
+            SampledSpectrum fs = p.coeff * F * D * G / (4 * dotNVdotNL);
 
             //VLRAssert(fs.allFinite(), "fs: %s, F: %s, G, %g, D: %g, wlIdx: %u, qDir: %s, dir: %s",
             //          fs.toString().c_str(), F.toString().c_str(), G, D, query.wlHint, dirV.toString().c_str(), dirL.toString().c_str());
@@ -843,7 +843,7 @@ namespace VLR {
                 float F_wl = fresnel.evaluate(dotHV_wl, wlIdx);
                 float G_wl = ggx.evaluateSmithG1(dirV, m_wl) * ggx.evaluateSmithG1(dirL, m_wl);
                 float D_wl = ggx.evaluate(m_wl);
-                ret[wlIdx] = std::fabs(dotHV_wl * dotHL_wl) * (1 - F_wl) * G_wl * D_wl / std::pow(eEnter[wlIdx] * dotHV_wl + eExit[wlIdx] * dotHL_wl, 2);
+                ret[wlIdx] = std::fabs(dotHV_wl * dotHL_wl) * p.coeff[wlIdx] * (1 - F_wl) * G_wl * D_wl / std::pow(eEnter[wlIdx] * dotHV_wl + eExit[wlIdx] * dotHL_wl, 2);
 
                 //VLRAssert(std::isfinite(ret[wlIdx]), "fs: %g, F: %g, G, %g, D: %g, wlIdx: %u, qDir: %s, dir: %s",
                 //          ret[wlIdx], F_wl, G_wl, D_wl, query.wlHint, dirV.toString().c_str(), dirL.toString().c_str());

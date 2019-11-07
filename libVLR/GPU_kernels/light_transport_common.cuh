@@ -1,6 +1,7 @@
 ﻿#pragma once
 
 #include "kernel_common.cuh"
+#include <optix_math.h>
 
 namespace VLR {
     // Context-scope Variables
@@ -137,7 +138,7 @@ namespace VLR {
         SampledSpectrum alpha;
         SampledSpectrum contribution;
 		//SampledSpectrum normal;
-		SampledSpectrum albedo;
+		//SampledSpectrum albedo;
         Point3D origin;
         Vector3D direction;
         float prevDirPDF;
@@ -145,8 +146,10 @@ namespace VLR {
     };
 
     struct ShadowPayload {
+        KernelRNG rng;
         WavelengthSamples wls;
         float fractionalVisibility;
+        SampledSpectrum shadow_color;
     };
 
 
@@ -202,101 +205,7 @@ namespace VLR {
                        std::fabs(p.y) < kOrigin ? newP2.y : newP1.y,
                        std::fabs(p.z) < kOrigin ? newP2.z : newP1.z);
     }
-
-
-
-    // ----------------------------------------------------------------
-    // Light
-
-    RT_FUNCTION bool testVisibility(const SurfacePoint &shadingSurfacePoint, const SurfacePoint &lightSurfacePoint,
-                                    Vector3D* shadowRayDir, float* squaredDistance, float* fractionalVisibility) {
-        VLRAssert(shadingSurfacePoint.atInfinity == false, "Shading point must be in finite region.");
-
-        *shadowRayDir = lightSurfacePoint.calcDirectionFrom(shadingSurfacePoint.position, squaredDistance);
-
-        const Normal3D &geomNormal = shadingSurfacePoint.geometricNormal;
-        bool isFrontSide = dot(geomNormal, *shadowRayDir) > 0;
-        Point3D shadingPoint = offsetRayOrigin(shadingSurfacePoint.position, isFrontSide ? geomNormal : -geomNormal);
-
-        optix::Ray shadowRay = optix::make_Ray(asOptiXType(shadingPoint), asOptiXType(*shadowRayDir), RayType::Shadow, 0.0f, FLT_MAX);
-        if (!lightSurfacePoint.atInfinity)
-            shadowRay.tmax = std::sqrt(*squaredDistance) * 0.9999f;
-
-        ShadowPayload shadowPayload;
-        shadowPayload.wls = sm_payload.wls;
-        shadowPayload.fractionalVisibility = 1.0f;
-        rtTrace(pv_topGroup, shadowRay, shadowPayload);
-
-        *fractionalVisibility = shadowPayload.fractionalVisibility;
-
-        return *fractionalVisibility > 0;
-    }
-
-    RT_FUNCTION void selectSurfaceLight(float lightSample, SurfaceLight* light, float* lightProb, float* remapped) {
-        float sumImps = pv_envLightDescriptor.importance + pv_lightImpDist.integral();
-        float su = sumImps * lightSample;
-        if (su < pv_envLightDescriptor.importance) {
-            *light = SurfaceLight(pv_envLightDescriptor);
-            *lightProb = pv_envLightDescriptor.importance / sumImps;
-        }
-        else {
-            lightSample = (su - pv_envLightDescriptor.importance) / pv_lightImpDist.integral();
-            uint32_t lightIdx = pv_lightImpDist.sample(lightSample, lightProb, remapped);
-            *light = SurfaceLight(pv_geometryInstanceDescriptorBuffer[lightIdx]);
-            *lightProb *= pv_lightImpDist.integral() / sumImps;
-        }
-    }
-
-    RT_FUNCTION float getSumLightImportances() {
-        return pv_envLightDescriptor.importance + pv_lightImpDist.integral();
-    }
-
-    RT_FUNCTION float evaluateEnvironmentAreaPDF(float phi, float theta) {
-        VLRAssert(std::isfinite(phi) && std::isfinite(theta), "\"phi\", \"theta\": Not finite values %g, %g.", phi, theta);
-        float uvPDF = pv_envLightDescriptor.body.asInfSphere.importanceMap.evaluatePDF(phi / (2 * M_PIf), theta / M_PIf);
-        return uvPDF / (2 * M_PIf * M_PIf * std::sin(theta));
-    }
-
-    // END: Light
-    // ----------------------------------------------------------------
-
-
-
-    RT_PROGRAM void shadowAnyHitDefault() {
-        sm_shadowPayload.fractionalVisibility = 0.0f;
-        rtTerminateRay();
-    }
-
-    RT_FUNCTION float getAlpha() {
-        HitPointParameter hitPointParam = a_hitPointParam;
-        SurfacePoint surfPt;
-        float hypAreaPDF;
-        pv_progDecodeHitPoint(hitPointParam, &surfPt, &hypAreaPDF);
-
-        return calcNode(pv_nodeAlpha, 1.0f, surfPt, sm_payload.wls);
-    }
-
-    // Common Any Hit Program for All Primitive Types and Materials for non-shadow rays
-    RT_PROGRAM void anyHitWithAlpha() {
-        float alpha = getAlpha();
-
-        // Stochastic Alpha Test
-        if (sm_payload.rng.getFloat0cTo1o() >= alpha)
-            rtIgnoreIntersection();
-    }
-
-    // Common Any Hit Program for All Primitive Types and Materials for shadow rays
-    RT_PROGRAM void shadowAnyHitWithAlpha() {
-        float alpha = getAlpha();
-
-        sm_shadowPayload.fractionalVisibility *= (1 - alpha);
-        if (sm_shadowPayload.fractionalVisibility == 0.0f)
-            rtTerminateRay();
-        else
-            rtIgnoreIntersection();
-    }
-
-
+	
 
     // JP: 変異された法線に従ってシェーディングフレームを変更する。
     // EN: perturb the shading frame according to the modified normal.
@@ -366,4 +275,123 @@ namespace VLR {
         Vector3D newTangent = calcNode(pv_nodeTangent, surfPt->shadingFrame.x, *surfPt, sm_payload.wls);
         modifyTangent(newTangent, surfPt);
     }
+
+
+    // ----------------------------------------------------------------
+    // Light
+
+    RT_FUNCTION bool testVisibility(const SurfacePoint &shadingSurfacePoint, const SurfacePoint &lightSurfacePoint,
+                                    Vector3D* shadowRayDir, float* squaredDistance, float* fractionalVisibility, SampledSpectrum *shadow_color) {
+        VLRAssert(shadingSurfacePoint.atInfinity == false, "Shading point must be in finite region.");
+
+        *shadowRayDir = lightSurfacePoint.calcDirectionFrom(shadingSurfacePoint.position, squaredDistance);
+
+        const Normal3D &geomNormal = shadingSurfacePoint.geometricNormal;
+        bool isFrontSide = dot(geomNormal, *shadowRayDir) > 0;
+        Point3D shadingPoint = offsetRayOrigin(shadingSurfacePoint.position, isFrontSide ? geomNormal : -geomNormal);
+
+        optix::Ray shadowRay = optix::make_Ray(asOptiXType(shadingPoint), asOptiXType(*shadowRayDir), RayType::Shadow, 0.0f, FLT_MAX);
+        if (!lightSurfacePoint.atInfinity)
+            shadowRay.tmax = std::sqrt(*squaredDistance) * 0.9999f;
+
+        ShadowPayload shadowPayload;
+        shadowPayload.rng = sm_payload.rng;
+        shadowPayload.wls = sm_payload.wls;
+        shadowPayload.fractionalVisibility = 1.0f;
+        shadowPayload.shadow_color = SampledSpectrum::One();
+        rtTrace(pv_topGroup, shadowRay, shadowPayload);
+
+        *fractionalVisibility = shadowPayload.fractionalVisibility;	
+        *shadow_color = shadowPayload.shadow_color;
+		
+		return *fractionalVisibility > 0;
+    }
+
+    RT_FUNCTION void selectSurfaceLight(float lightSample, SurfaceLight* light, float* lightProb, float* remapped) {
+        float sumImps = pv_envLightDescriptor.importance + pv_lightImpDist.integral();
+        float su = sumImps * lightSample;
+        if (su < pv_envLightDescriptor.importance) {
+            *light = SurfaceLight(pv_envLightDescriptor);
+            *lightProb = pv_envLightDescriptor.importance / sumImps;
+        }
+        else {
+            lightSample = (su - pv_envLightDescriptor.importance) / pv_lightImpDist.integral();
+            uint32_t lightIdx = pv_lightImpDist.sample(lightSample, lightProb, remapped);
+            *light = SurfaceLight(pv_geometryInstanceDescriptorBuffer[lightIdx]);
+            *lightProb *= pv_lightImpDist.integral() / sumImps;
+        }
+    }
+
+    RT_FUNCTION float getSumLightImportances() {
+        return pv_envLightDescriptor.importance + pv_lightImpDist.integral();
+    }
+
+    RT_FUNCTION float evaluateEnvironmentAreaPDF(float phi, float theta) {
+        VLRAssert(std::isfinite(phi) && std::isfinite(theta), "\"phi\", \"theta\": Not finite values %g, %g.", phi, theta);
+        float uvPDF = pv_envLightDescriptor.body.asInfSphere.importanceMap.evaluatePDF(phi / (2 * M_PIf), theta / M_PIf);
+        return uvPDF / (2 * M_PIf * M_PIf * std::sin(theta));
+    }
+
+    // END: Light
+    // ----------------------------------------------------------------
+
+
+    RT_FUNCTION float getAlpha() {
+        HitPointParameter hitPointParam = a_hitPointParam;
+        SurfacePoint surfPt;
+        float hypAreaPDF;
+        pv_progDecodeHitPoint(hitPointParam, &surfPt, &hypAreaPDF);
+
+        return calcNode(pv_nodeAlpha, 1.0f, surfPt, sm_payload.wls);
+    }
+	   
+
+    RT_PROGRAM void shadowAnyHitDefault() {
+		sm_shadowPayload.shadow_color = SampledSpectrum::Zero();		
+		sm_shadowPayload.fractionalVisibility = 0.0f;
+		
+        rtTerminateRay();
+    }
+    // Common Any Hit Program for All Primitive Types and Materials for non-shadow rays
+    RT_PROGRAM void anyHitWithAlpha() {
+        float alpha = getAlpha();
+		alpha = 1.0f;
+		
+        // Stochastic Alpha Test
+        if (sm_payload.rng.getFloat0cTo1o() >= alpha)
+            rtIgnoreIntersection();
+    }
+	
+    // Common Any Hit Program for All Primitive Types and Materials for shadow rays
+    RT_PROGRAM void shadowAnyHitWithAlpha() {		
+        float alpha = getAlpha();
+        sm_shadowPayload.fractionalVisibility *= (1 - alpha);
+		
+        WavelengthSamples &wls = sm_shadowPayload.wls;
+				
+        SurfacePoint surfPt;
+        float hypAreaPDF;
+        calcSurfacePoint(&surfPt, &hypAreaPDF);
+
+        const SurfaceMaterialDescriptor matDesc = pv_materialDescriptorBuffer[pv_materialIndex];
+        BSDF bsdf(matDesc, surfPt, wls);
+
+		const BSDFProcedureSet procSet = pv_bsdfProcedureSetBuffer[matDesc.bsdfProcedureSetIndex];
+        auto progGetBaseColor = (ProgSigBSDFGetBaseColor)procSet.progGetBaseColor;
+        SampledSpectrum fs = progGetBaseColor((const uint32_t *)&bsdf);
+		//SampledSpectrum fs = SampledSpectrum(1.f, 1.f, 1.f);
+
+		float nDi = fabs(dot(make_float3(surfPt.geometricNormal.x, surfPt.geometricNormal.y, surfPt.geometricNormal.z), sm_ray.direction));
+		float3 attenuation = 1 - fresnel_schlick(nDi, 5, 1 - make_float3(fs.r, fs.g, fs.b), make_float3(1));
+		sm_shadowPayload.shadow_color *= SampledSpectrum(attenuation.x, attenuation.y, attenuation.z);
+		  
+	//	sm_shadowPayload.shadow_color = SampledSpectrum(0,0,1);		
+
+        if (sm_shadowPayload.fractionalVisibility <= 0.0f)
+            rtTerminateRay();
+        else
+            rtIgnoreIntersection();
+    }
+
+
 }

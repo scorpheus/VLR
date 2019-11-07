@@ -150,7 +150,7 @@ namespace VLR {
 		optix::PostprocessingStage m_denoiserStage;
 		optix::Buffer trainingDataBuffer;
 				
-		optix::CommandList commandListWithDenoiser;
+		optix::CommandList commandListWithDenoiser, commandListNoDenoiser;
 
         optix::Buffer m_rawOutputBuffer;
         optix::Buffer m_outputBuffer;

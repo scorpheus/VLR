@@ -12,10 +12,19 @@ namespace VLR {
     //rtBuffer<RGBSpectrum, 2> pv_outputNormalBuffer;
     //rtBuffer<RGBSpectrum, 2> pv_outputAlbedoBuffer;
 
+	
 
+	#define CLAMPINTENSITY(c, clampValue)		const float v=std::fmax(c.r,std::fmax(c.g, c.b)); \
+							if(v>clampValue){const float m=clampValue/v;c.r*=m; \
+							c.g*=m;c.b*=m; /* don't touch w */ }
 
+	
     // Common Closest Hit Program for All Primitive Types and Materials
     RT_PROGRAM void pathTracingIteration() {
+		// first hit is an object
+        if (sm_payload.contribution.a == -1.0f)
+            sm_payload.contribution.a = 1.f;
+
         KernelRNG &rng = sm_payload.rng;
         WavelengthSamples &wls = sm_payload.wls;
 
@@ -43,6 +52,7 @@ namespace VLR {
             }
 
             sm_payload.contribution += sm_payload.alpha * Le * MISWeight;
+			CLAMPINTENSITY(sm_payload.contribution, 10.f);
         }
         if (surfPt.atInfinity || sm_payload.maxLengthTerminate)
             return;
@@ -57,10 +67,10 @@ namespace VLR {
         BSDFQuery fsQuery(dirOutLocal, geomNormalLocal, DirectionType::All(), wls);
 
         // get base color for denoiser
-        if (sm_payload.albedo.r == -1.f && sm_payload.albedo.g == -1.f && sm_payload.albedo.b == -1.f) {
+   /*     if (sm_payload.contribution.a == -1.0f) {
             sm_payload.contribution.a = 1.f;
 
-            const BSDFProcedureSet procSet = pv_bsdfProcedureSetBuffer[matDesc.bsdfProcedureSetIndex];
+      /*      const BSDFProcedureSet procSet = pv_bsdfProcedureSetBuffer[matDesc.bsdfProcedureSetIndex];
             auto progGetBaseColor = (ProgSigBSDFGetBaseColor)procSet.progGetBaseColor;
             sm_payload.albedo = progGetBaseColor((const uint32_t *)&bsdf);
             //	sm_payload.normal = RGBSpectrum(surfPt.geometricNormal.x, surfPt.geometricNormal.y, surfPt.geometricNormal.z);
@@ -71,7 +81,7 @@ namespace VLR {
             rotMat = invert(rotMat);
             auto normalCam = normalize(rotMat * surfPt.geometricNormal);
             sm_payload.normal = RGBSpectrum(-normalCam.x, normalCam.y, -normalCam.z);
-    */	}
+    *///	}
 
         // Next Event Estimation (explicit light sampling)
         if (bsdf.hasNonDelta()) {
@@ -91,11 +101,12 @@ namespace VLR {
             Vector3D shadowRayDir;
             float squaredDistance;
             float fractionalVisibility;
-            if (M.hasNonZero() && testVisibility(surfPt, lpResult.surfPt, &shadowRayDir, &squaredDistance, &fractionalVisibility)) {
+			SampledSpectrum shadow_color;
+            if (M.hasNonZero() && testVisibility(surfPt, lpResult.surfPt, &shadowRayDir, &squaredDistance, &fractionalVisibility, &shadow_color)) {
                 Vector3D shadowRayDir_l = lpResult.surfPt.toLocal(-shadowRayDir);
                 Vector3D shadowRayDir_sn = surfPt.toLocal(shadowRayDir);
 
-                SampledSpectrum Le = M * ledf.evaluate(EDFQuery(), shadowRayDir_l);
+				SampledSpectrum Le = M * ledf.evaluate(EDFQuery(), shadowRayDir_l) *shadow_color;
                 float lightPDF = lightProb * lpResult.areaPDF;
 
                 SampledSpectrum fs = bsdf.evaluate(fsQuery, shadowRayDir_sn);
@@ -109,6 +120,7 @@ namespace VLR {
                 float G = fractionalVisibility * absDot(shadowRayDir_sn, geomNormalLocal) * cosLight / squaredDistance;
                 float scalarCoeff = G * MISWeight / lightPDF; // 直接contributionの計算式に入れるとCUDAのバグなのかおかしな結果になる。
                 sm_payload.contribution += sm_payload.alpha * Le * fs * scalarCoeff;
+				CLAMPINTENSITY(sm_payload.contribution, 100.f);
             }
         }
 
@@ -124,6 +136,7 @@ namespace VLR {
 
         float cosFactor = dot(fsResult.dirLocal, geomNormalLocal);
         sm_payload.alpha *= fs * (std::fabs(cosFactor) / fsResult.dirPDF);
+	//	CLAMPINTENSITY(sm_payload.alpha);
 
         Vector3D dirIn = surfPt.fromLocal(fsResult.dirLocal);
         sm_payload.origin = offsetRayOrigin(surfPt.position, cosFactor > 0.0f ? surfPt.geometricNormal : -surfPt.geometricNormal);
@@ -139,6 +152,12 @@ namespace VLR {
     //     が、OptiXのBVHビルダーがLBVHベースなので無限大のAABBを生成するのは危険。
     //     仕方なくMiss Programで環境光を処理する。
     RT_PROGRAM void pathTracingMiss() {
+        // first hit is the background, set alpha to °
+        if (sm_payload.contribution.a == -1.0f) {
+       //     sm_payload.albedo = spEmittance;
+            sm_payload.contribution.a = 0.f;
+        }
+
         if (pv_envLightDescriptor.importance == 0)
             return;
 
@@ -188,14 +207,9 @@ namespace VLR {
             }
 
             sm_payload.contribution += sm_payload.alpha * Le * MISWeight;
-        }
-        // get base color for denoiser
-        if (sm_payload.albedo.r == -1.f && sm_payload.albedo.g == -1.f && sm_payload.albedo.b == -1.f) {
-            sm_payload.albedo = spEmittance;
-            sm_payload.contribution.a = 0.f;
+			CLAMPINTENSITY(sm_payload.contribution, 100.f);
         }
     }
-
 
 
     // Common Ray Generation Program for All Camera Types
@@ -227,8 +241,9 @@ namespace VLR {
         payload.wls = wls;
         payload.alpha = alpha;
         payload.contribution = SampledSpectrum::Zero();
+		payload.contribution.a = -1.0f;
         //payload.normal = SampledSpectrum(0.0, 1.0, 0.0);
-        payload.albedo = SampledSpectrum(-1.f, -1.f, -1.f);
+        //payload.albedo = SampledSpectrum(-1.f, -1.f, -1.f);
 
         const uint32_t MaxPathLength = 25;
         uint32_t pathLength = 0;
@@ -247,7 +262,7 @@ namespace VLR {
         }
         pv_rngBuffer[sm_launchIndex] = payload.rng;
         if (!payload.contribution.allFinite()) {
-            //	vlrprintf("Pass %u, (%u, %u): Not a finite value.\n", pv_numAccumFrames, sm_launchIndex.x, sm_launchIndex.y);
+           //	vlrprintf("Pass %u, (%u, %u): Not a finite value.\n", pv_numAccumFrames, sm_launchIndex.x, sm_launchIndex.y);
             return;
         }
 
@@ -256,10 +271,11 @@ namespace VLR {
         //	pv_outputNormalBuffer[sm_launchIndex] = payload.normal;
         //	pv_outputAlbedoBuffer[sm_launchIndex] = payload.albedo;
         }
+		//CLAMPINTENSITY(payload.contribution);
         pv_outputBuffer[sm_launchIndex].add(wls, payload.contribution);
     }
 
-
+	
 
     // Exception Program
     RT_PROGRAM void exception() {

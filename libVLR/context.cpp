@@ -555,14 +555,6 @@ namespace VLR {
 			m_denoiserStage->declareVariable("input_normal_buffer");
 		}
 
-		if (commandListWithDenoiser) {
-			commandListWithDenoiser->destroy();
-		}
-		commandListWithDenoiser = m_optixContext->createCommandList();
-		commandListWithDenoiser->appendLaunch(EntryPoint::PathTracing, m_width, m_height);
-		commandListWithDenoiser->appendLaunch(EntryPoint::ConvertToRGB, m_width, m_height);
-		commandListWithDenoiser->appendPostprocessingStage(m_denoiserStage, m_width, m_height);
-		commandListWithDenoiser->finalize();
     }
 
     const void* Context::mapOutputBuffer() {
@@ -601,6 +593,23 @@ namespace VLR {
             camera->setup();
 
             optixContext["VLR::pv_imageSize"]->setUint(imageSize);
+			
+			if (commandListWithDenoiser) {
+				commandListWithDenoiser->destroy();
+			}
+			commandListWithDenoiser = m_optixContext->createCommandList();
+			commandListWithDenoiser->appendLaunch(EntryPoint::PathTracing, m_width, m_height);
+			commandListWithDenoiser->appendLaunch(EntryPoint::ConvertToRGB, m_width, m_height);
+			commandListWithDenoiser->appendPostprocessingStage(m_denoiserStage, m_width, m_height);
+			commandListWithDenoiser->finalize();
+		
+			if (commandListNoDenoiser) {
+				commandListNoDenoiser->destroy();
+			}
+			commandListNoDenoiser = m_optixContext->createCommandList();
+			commandListNoDenoiser->appendLaunch(EntryPoint::PathTracing, m_width, m_height);
+			commandListNoDenoiser->appendLaunch(EntryPoint::ConvertToRGB, m_width, m_height);
+			commandListNoDenoiser->finalize();
 
             m_numAccumFrames = 0;
         }
@@ -619,9 +628,10 @@ namespace VLR {
 #endif
 		if(do_denoise)
 			commandListWithDenoiser->execute();
-		else {
+		else{
 			optixContext->launch(EntryPoint::PathTracing, imageSize.x, imageSize.y);
 			optixContext->launch(EntryPoint::ConvertToRGB, imageSize.x, imageSize.y);
+		//	commandListNoDenoiser->execute();
 		}
 
     }
